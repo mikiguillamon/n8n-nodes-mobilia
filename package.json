@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-mobilia",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "n8n community node for the Mobilia API",
   "license": "MIT",
   "homepage": "https://api.mobiliagestion.es/swagger/index.html",
@@ -11,7 +11,9 @@
     "crm",
     "real-estate"
   ],
-  "author": { "name": "Miki Guillamon" },
+  "author": {
+    "name": "Miki Guillamon"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/mikiguillamon/n8n-nodes-mobilia.git"
@@ -25,15 +27,21 @@
     "release": "n8n-node release",
     "prepublishOnly": "npm run lint && npm run build"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "publishConfig": {
     "access": "public"
   },
   "n8n": {
     "n8nNodesApiVersion": 1,
     "strict": true,
-    "credentials": ["dist/credentials/MobiliaApi.credentials.js"],
-    "nodes": ["dist/nodes/Mobilia/Mobilia.node.js"]
+    "credentials": [
+      "dist/credentials/MobiliaApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/Mobilia/Mobilia.node.js"
+    ]
   },
   "devDependencies": {
     "@n8n/node-cli": "^0.28.0",
@@ -42,5 +50,7 @@
     "release-it": "20.0.1",
     "typescript": "5.9.3"
   },
-  "peerDependencies": { "n8n-workflow": "*" }
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
 }
