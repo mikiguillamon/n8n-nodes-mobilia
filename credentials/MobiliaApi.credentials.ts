@@ -42,13 +42,10 @@ export class MobiliaApi implements ICredentialType {
 			url: '/api/v1/token',
 			method: 'POST',
 			headers: {
+				Accept: 'application/json',
 				'Content-Type': 'application/x-www-form-urlencoded',
 			},
-			body: {
-				grant_type: 'client_credentials',
-				client_id: '={{$credentials.clientId}}',
-				client_secret: '={{$credentials.clientSecret}}',
-			},
+			body: '={{"grant_type=client_credentials&client_id=" + encodeURIComponent($credentials.clientId) + "&client_secret=" + encodeURIComponent($credentials.clientSecret)}}',
 		},
 	};
 }

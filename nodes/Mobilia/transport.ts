@@ -332,6 +332,10 @@ function simplifyResponseData(response: unknown, simplifyResponse: boolean): unk
 		return responseObject.datos;
 	}
 
+	if ('elementos' in responseObject) {
+		return responseObject.elementos;
+	}
+
 	return response;
 }
 
@@ -557,6 +561,10 @@ export function normalizeExecutionOutput(
 
 	if (splitIntoItems) {
 		return toItemArray(data);
+	}
+
+	if (Array.isArray(data)) {
+		return [{ data } as IDataObject];
 	}
 
 	if (data && typeof data === 'object') {
