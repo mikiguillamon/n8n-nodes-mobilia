@@ -20,6 +20,7 @@ interface TokenCacheEntry {
 
 const tokenCache = new Map<string, TokenCacheEntry>();
 const TOKEN_REFRESH_BUFFER_MS = 60_000;
+const DEFAULT_TOKEN_EXPIRES_IN_SECONDS = 7200;
 
 function normalizeBaseUrl(baseUrl: string): string {
 	return baseUrl.replace(/\/+$/, '');
@@ -237,6 +238,32 @@ function buildCacheKey(credentials: MobiliaCredentials): string {
 	return `${normalizeBaseUrl(credentials.baseUrl)}::${credentials.clientId}`;
 }
 
+function parseTokenResponse(context: IExecuteFunctions, response: unknown): IDataObject {
+	if (typeof response === 'string') {
+		try {
+			const parsed = JSON.parse(response);
+
+			if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+				return parsed as IDataObject;
+			}
+		} catch (error) {
+			throw new NodeOperationError(
+				context.getNode(),
+				`Mobilia token response was not valid JSON: ${(error as Error).message}`,
+			);
+		}
+	}
+
+	if (response && typeof response === 'object' && !Array.isArray(response)) {
+		return response as IDataObject;
+	}
+
+	throw new NodeOperationError(
+		context.getNode(),
+		`Mobilia token response had an unexpected type: ${typeof response}`,
+	);
+}
+
 async function getAccessToken(
 	context: IExecuteFunctions,
 	credentials: MobiliaCredentials,
@@ -260,19 +287,25 @@ async function getAccessToken(
 		method: 'POST',
 		url: `${normalizeBaseUrl(credentials.baseUrl)}/api/v1/token`,
 		headers: {
+			Accept: 'application/json',
 			'Content-Type': 'application/x-www-form-urlencoded',
 		},
-		body,
-		json: true,
-	})) as IDataObject;
+		body: body.toString(),
+	})) as unknown;
 
-	const token = response.token;
-	const expiresIn = Number(response.expiresIn ?? 7200);
+	const tokenResponse = parseTokenResponse(context, response);
+	const token = tokenResponse.token ?? tokenResponse.access_token ?? tokenResponse.accessToken;
+	const expiresIn = Number(
+		tokenResponse.expiresIn ?? tokenResponse.expires_in ?? DEFAULT_TOKEN_EXPIRES_IN_SECONDS,
+	);
 
 	if (typeof token !== 'string' || token.length === 0) {
+		const responseKeys = Object.keys(tokenResponse);
 		throw new NodeOperationError(
 			context.getNode(),
-			'Could not obtain a valid bearer token from Mobilia',
+			`Could not obtain a valid bearer token from Mobilia. Token response keys: ${
+				responseKeys.length > 0 ? responseKeys.join(', ') : 'none'
+			}`,
 		);
 	}
 
