@@ -1410,7 +1410,7 @@ export interface MobiliaQueryFieldGroup {
 	placeholder: string;
 }
 
-export type MobiliaLocalFilterKind = 'boolean' | 'number' | 'string';
+export type MobiliaLocalFilterKind = 'boolean' | 'enum' | 'number' | 'string';
 export type MobiliaLocalFilterOperator = 'contains' | 'equals' | 'max' | 'min';
 
 export interface MobiliaLocalFilterDefinition {
@@ -1418,9 +1418,11 @@ export interface MobiliaLocalFilterDefinition {
 	displayName: string;
 	kind: MobiliaLocalFilterKind;
 	name: string;
+	options?: string[];
 	operator: MobiliaLocalFilterOperator;
 	path: string;
 	placeholder?: string;
+	role?: 'config' | 'filter';
 }
 
 export interface MobiliaLocalFilterGroup {
@@ -1487,79 +1489,69 @@ const localBooleanFilter = (
 	kind: 'boolean',
 });
 
+const localEnumConfig = (
+	name: string,
+	displayName: string,
+	description: string,
+	options: string[],
+	placeholder?: string,
+): MobiliaLocalFilterDefinition => ({
+	name,
+	displayName,
+	path: '',
+	description,
+	placeholder,
+	operator: 'equals',
+	kind: 'enum',
+	options,
+	role: 'config',
+});
+
 const propertyAdvancedPriceFilters: MobiliaLocalFilterDefinition[] = [
-	{
-		name: 'precioVentaMinLocal',
-		displayName: 'Precio Venta Mínimo',
-		description: 'Filtra inmuebles con precio de venta igual o superior a este valor.',
-		kind: 'number',
-		operator: 'min',
-		path: 'precioVenta',
-		placeholder: '250000',
-	},
-	{
-		name: 'precioVentaMaxLocal',
-		displayName: 'Precio Venta Máximo',
-		description: 'Filtra inmuebles con precio de venta igual o inferior a este valor.',
-		kind: 'number',
-		operator: 'max',
-		path: 'precioVenta',
-		placeholder: '450000',
-	},
-	{
-		name: 'precioAlquilerMinLocal',
-		displayName: 'Precio Alquiler Mínimo',
-		description: 'Filtra inmuebles con precio de alquiler igual o superior a este valor.',
-		kind: 'number',
-		operator: 'min',
-		path: 'precioAlquiler',
-		placeholder: '900',
-	},
-	{
-		name: 'precioAlquilerMaxLocal',
-		displayName: 'Precio Alquiler Máximo',
-		description: 'Filtra inmuebles con precio de alquiler igual o inferior a este valor.',
-		kind: 'number',
-		operator: 'max',
-		path: 'precioAlquiler',
-		placeholder: '1500',
-	},
-	{
-		name: 'precioTraspasoMinLocal',
-		displayName: 'Precio Traspaso Mínimo',
-		description: 'Filtra inmuebles con precio de traspaso igual o superior a este valor.',
-		kind: 'number',
-		operator: 'min',
-		path: 'precioTraspaso',
-		placeholder: '30000',
-	},
-	{
-		name: 'precioTraspasoMaxLocal',
-		displayName: 'Precio Traspaso Máximo',
-		description: 'Filtra inmuebles con precio de traspaso igual o inferior a este valor.',
-		kind: 'number',
-		operator: 'max',
-		path: 'precioTraspaso',
-		placeholder: '120000',
-	},
-	{
-		name: 'precioM2VentaMinLocal',
-		displayName: 'Precio M2 Venta Mínimo',
-		description: 'Filtra inmuebles por precio de venta por metro cuadrado.',
-		kind: 'number',
-		operator: 'min',
-		path: 'precioM2Venta',
-		placeholder: '1500',
-	},
-	{
-		name: 'precioM2VentaMaxLocal',
-		displayName: 'Precio M2 Venta Máximo',
-		description: 'Filtra inmuebles por precio de venta por metro cuadrado.',
-		kind: 'number',
-		operator: 'max',
-		path: 'precioM2Venta',
-		placeholder: '3500',
-	},
+	localEnumConfig(
+		'priceContextLocal',
+		'Contexto De Precio',
+		'Define qué precio debe usar el nodo para comparar rangos. Automático intenta deducirlo a partir de las operaciones activas del inmueble.',
+		['Automatico', 'Venta', 'Alquiler', 'Traspaso'],
+	),
+	localNumberFilter(
+		'priceMinLocal',
+		'Precio Mínimo',
+		'$propertyPrice',
+		'Precio mínimo según el contexto seleccionado.',
+		'min',
+		'250000',
+	),
+	localNumberFilter(
+		'priceMaxLocal',
+		'Precio Máximo',
+		'$propertyPrice',
+		'Precio máximo según el contexto seleccionado.',
+		'max',
+		'450000',
+	),
+	localNumberFilter(
+		'priceM2MinLocal',
+		'Precio M2 Mínimo',
+		'$propertyPricePerSquareMeter',
+		'Precio mínimo por metro cuadrado según el contexto seleccionado.',
+		'min',
+		'1500',
+	),
+	localNumberFilter(
+		'priceM2MaxLocal',
+		'Precio M2 Máximo',
+		'$propertyPricePerSquareMeter',
+		'Precio máximo por metro cuadrado según el contexto seleccionado.',
+		'max',
+		'3500',
+	),
+	localBooleanFilter(
+		'priceOnRequestLocal',
+		'Precio A Consultar',
+		'$propertyPriceOnRequest',
+		'Filtra inmuebles cuyo precio principal esté marcado como a consultar según el contexto seleccionado.',
+	),
 ];
 
 const propertyAdvancedSizeFilters: MobiliaLocalFilterDefinition[] = [
@@ -1908,9 +1900,9 @@ const propertyAdvancedFeatureFilters: MobiliaLocalFilterDefinition[] = [
 export const mobiliaPropertyAdvancedFilterGroups: MobiliaLocalFilterGroup[] = [
 	{
 		name: 'propertyAdvancedPriceFilters',
-		displayName: 'Filtros Avanzados De Precio',
+		displayName: 'Contexto Comercial Y Precio',
 		operationValues: [...inmuebleListOperationValues],
-		placeholder: 'Añadir filtro de precio',
+		placeholder: 'Añadir filtro comercial',
 		filters: propertyAdvancedPriceFilters,
 	},
 	{
@@ -2465,28 +2457,36 @@ function getLocalFilterDefaultValue(filter: MobiliaLocalFilterDefinition): INode
 		return '__unset';
 	}
 
+	if (filter.kind === 'enum') {
+		return filter.options?.[0] ?? '';
+	}
+
 	return '';
 }
 
 function getLocalFilterPropertyOptions(
 	filter: MobiliaLocalFilterDefinition,
 ): INodeProperties['options'] | undefined {
-	if (filter.kind !== 'boolean') {
-		return undefined;
+	if (filter.kind === 'boolean') {
+		return [
+			{ name: 'No Definir', value: '__unset' },
+			{ name: 'Sí', value: 'true' },
+			{ name: 'No', value: 'false' },
+		];
 	}
 
-	return [
-		{ name: 'No Definir', value: '__unset' },
-		{ name: 'Sí', value: 'true' },
-		{ name: 'No', value: 'false' },
-	];
+	if (filter.kind === 'enum') {
+		return (filter.options ?? []).map((option) => ({ name: option, value: option }));
+	}
+
+	return undefined;
 }
 
 function buildLocalFilterOption(filter: MobiliaLocalFilterDefinition): INodeProperties {
 	return {
 		displayName: filter.displayName,
 		name: filter.name,
-		type: filter.kind === 'boolean' ? 'options' : 'string',
+		type: filter.kind === 'boolean' || filter.kind === 'enum' ? 'options' : 'string',
 		default: getLocalFilterDefaultValue(filter),
 		options: getLocalFilterPropertyOptions(filter),
 		placeholder: filter.placeholder,

@@ -329,6 +329,14 @@ function getLocalFilterValue(
 		return rawValue === 'true';
 	}
 
+	if (filter.kind === 'enum') {
+		if (typeof rawValue !== 'string' || rawValue.trim() === '') {
+			return undefined;
+		}
+
+		return rawValue;
+	}
+
 	if (filter.kind === 'number') {
 		if (typeof rawValue === 'number') {
 			return Number.isFinite(rawValue) ? rawValue : undefined;
@@ -355,6 +363,81 @@ function getLocalFilterValue(
 	}
 
 	return rawValue.trim();
+}
+
+type PropertyPriceContext = 'Alquiler' | 'Traspaso' | 'Venta';
+type PropertyPriceContextSelection = PropertyPriceContext | 'Automatico';
+
+const PROPERTY_PRICE_CONTEXT_FIELDS = {
+	Alquiler: {
+		active: 'alquiler',
+		price: 'precioAlquiler',
+		priceM2: 'precioM2Alquiler',
+		priceOnRequest: 'precioAlquilerAConsultar',
+	},
+	Traspaso: {
+		active: 'traspaso',
+		price: 'precioTraspaso',
+		priceM2: 'precioM2Traspaso',
+		priceOnRequest: 'precioTraspasoAConsultar',
+	},
+	Venta: {
+		active: 'venta',
+		price: 'precioVenta',
+		priceM2: 'precioM2Venta',
+		priceOnRequest: 'precioVentaAConsultar',
+	},
+} as const;
+
+function getPropertyPriceContexts(
+	item: IDataObject,
+	filters: Record<string, boolean | number | string>,
+): PropertyPriceContext[] {
+	const selectedContext = filters.priceContextLocal as PropertyPriceContextSelection | undefined;
+
+	if (
+		selectedContext === 'Venta' ||
+		selectedContext === 'Alquiler' ||
+		selectedContext === 'Traspaso'
+	) {
+		return [selectedContext];
+	}
+
+	const activeContexts = (Object.keys(PROPERTY_PRICE_CONTEXT_FIELDS) as PropertyPriceContext[]).filter(
+		(context) => Boolean(getNestedValue(item, PROPERTY_PRICE_CONTEXT_FIELDS[context].active)),
+	);
+
+	if (activeContexts.length > 0) {
+		return activeContexts;
+	}
+
+	return ['Venta', 'Alquiler', 'Traspaso'];
+}
+
+function getDynamicFilterValues(
+	item: IDataObject,
+	filterDefinition: MobiliaLocalFilterDefinition,
+	filters: Record<string, boolean | number | string>,
+): unknown[] {
+	if (filterDefinition.path === '$propertyPrice') {
+		return getPropertyPriceContexts(item, filters)
+			.map((context) => getNestedValue(item, PROPERTY_PRICE_CONTEXT_FIELDS[context].price))
+			.filter((value) => value !== undefined && value !== null);
+	}
+
+	if (filterDefinition.path === '$propertyPricePerSquareMeter') {
+		return getPropertyPriceContexts(item, filters)
+			.map((context) => getNestedValue(item, PROPERTY_PRICE_CONTEXT_FIELDS[context].priceM2))
+			.filter((value) => value !== undefined && value !== null);
+	}
+
+	if (filterDefinition.path === '$propertyPriceOnRequest') {
+		return getPropertyPriceContexts(item, filters)
+			.map((context) => getNestedValue(item, PROPERTY_PRICE_CONTEXT_FIELDS[context].priceOnRequest))
+			.filter((value) => value !== undefined && value !== null);
+	}
+
+	return [getNestedValue(item, filterDefinition.path)];
 }
 
 function collectAdvancedFilters(
@@ -384,7 +467,10 @@ function collectAdvancedFilters(
 }
 
 function hasAdvancedFilters(filters: Record<string, boolean | number | string>): boolean {
-	return Object.keys(filters).length > 0;
+	return mobiliaAdvancedFilterDefinitions.some(
+		(filterDefinition) =>
+			filterDefinition.role !== 'config' && filters[filterDefinition.name] !== undefined,
+	);
 }
 
 function collectAdvancedJsonRules(
@@ -465,27 +551,37 @@ function matchesPropertyAdvancedFilters(
 	filters: Record<string, boolean | number | string>,
 ): boolean {
 	for (const filterDefinition of mobiliaAdvancedFilterDefinitions) {
+		if (filterDefinition.role === 'config') {
+			continue;
+		}
+
 		const expectedValue = filters[filterDefinition.name];
 
 		if (expectedValue === undefined) {
 			continue;
 		}
 
-		const actualValue = getNestedValue(item, filterDefinition.path);
+		const actualValues = getDynamicFilterValues(item, filterDefinition, filters).filter(
+			(value) => value !== undefined && value !== null,
+		);
 
-		if (actualValue === undefined || actualValue === null) {
+		if (actualValues.length === 0) {
 			return false;
 		}
 
 		if (filterDefinition.kind === 'string') {
-			const actualText = String(actualValue).toLocaleLowerCase('es');
 			const expectedText = String(expectedValue).toLocaleLowerCase('es');
+			const matches = actualValues.some((actualValue) => {
+				const actualText = String(actualValue).toLocaleLowerCase('es');
 
-			if (filterDefinition.operator === 'equals') {
-				if (actualText !== expectedText) {
-					return false;
+				if (filterDefinition.operator === 'equals') {
+					return actualText === expectedText;
 				}
-			} else if (!actualText.includes(expectedText)) {
+
+				return actualText.includes(expectedText);
+			});
+
+			if (!matches) {
 				return false;
 			}
 
@@ -493,29 +589,39 @@ function matchesPropertyAdvancedFilters(
 		}
 
 		if (filterDefinition.kind === 'boolean') {
-			if (Boolean(actualValue) !== expectedValue) {
+			const matches = actualValues.some((actualValue) => Boolean(actualValue) === expectedValue);
+
+			if (!matches) {
 				return false;
 			}
 
 			continue;
 		}
 
-		const actualNumber = Number(actualValue);
 		const expectedNumber = Number(expectedValue);
+		const matches = actualValues.some((actualValue) => {
+			const actualNumber = Number(actualValue);
 
-		if (!Number.isFinite(actualNumber) || !Number.isFinite(expectedNumber)) {
+			if (!Number.isFinite(actualNumber) || !Number.isFinite(expectedNumber)) {
+				return false;
+			}
+
+			if (filterDefinition.operator === 'min') {
+				return actualNumber >= expectedNumber;
+			}
+
+			if (filterDefinition.operator === 'max') {
+				return actualNumber <= expectedNumber;
+			}
+
+			if (filterDefinition.operator === 'equals') {
+				return actualNumber === expectedNumber;
+			}
+
 			return false;
-		}
+		});
 
-		if (filterDefinition.operator === 'min' && actualNumber < expectedNumber) {
-			return false;
-		}
-
-		if (filterDefinition.operator === 'max' && actualNumber > expectedNumber) {
-			return false;
-		}
-
-		if (filterDefinition.operator === 'equals' && actualNumber !== expectedNumber) {
+		if (!matches) {
 			return false;
 		}
 	}
