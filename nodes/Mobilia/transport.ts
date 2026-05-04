@@ -23,6 +23,8 @@ export interface MobiliaCredentials {
 	baseUrl: string;
 	clientId: string;
 	clientSecret: string;
+	licenseKey: string;
+	licenseValidationUrl?: string;
 }
 
 type MobiliaRequestContext = IExecuteFunctions | ILoadOptionsFunctions;
@@ -47,9 +49,19 @@ interface TokenCacheEntry {
 	expiresAt: number;
 }
 
+interface LicenseCacheEntry {
+	expiresAt: number;
+	message?: string;
+	valid: boolean;
+}
+
 const tokenCache = new Map<string, TokenCacheEntry>();
+const licenseCache = new Map<string, LicenseCacheEntry>();
 const TOKEN_REFRESH_BUFFER_MS = 60_000;
 const DEFAULT_TOKEN_EXPIRES_IN_SECONDS = 7200;
+const DEFAULT_LICENSE_CACHE_TTL_MS = 15 * 60 * 1000;
+const INVALID_LICENSE_CACHE_TTL_MS = 60 * 1000;
+const LOCAL_LICENSE_MIN_LENGTH = 10;
 
 function normalizeBaseUrl(baseUrl: string): string {
 	return baseUrl.replace(/\/+$/, '');
@@ -750,6 +762,10 @@ function buildCacheKey(credentials: MobiliaCredentials): string {
 	return `${normalizeBaseUrl(credentials.baseUrl)}::${credentials.clientId}`;
 }
 
+function buildLicenseCacheKey(credentials: MobiliaCredentials): string {
+	return `${credentials.licenseValidationUrl?.trim() ?? ''}::${credentials.licenseKey.trim()}`;
+}
+
 function parseTokenResponse(context: MobiliaRequestContext, response: unknown): IDataObject {
 	if (typeof response === 'string') {
 		try {
@@ -774,6 +790,162 @@ function parseTokenResponse(context: MobiliaRequestContext, response: unknown): 
 		context.getNode(),
 		`Mobilia token response had an unexpected type: ${typeof response}`,
 	);
+}
+
+function parseLicenseResponse(context: MobiliaRequestContext, response: unknown): IDataObject {
+	if (typeof response === 'string') {
+		try {
+			const parsed = JSON.parse(response);
+
+			if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+				return parsed as IDataObject;
+			}
+		} catch (error) {
+			throw new NodeOperationError(
+				context.getNode(),
+				`License server response was not valid JSON: ${(error as Error).message}`,
+			);
+		}
+	}
+
+	if (response && typeof response === 'object' && !Array.isArray(response)) {
+		return response as IDataObject;
+	}
+
+	throw new NodeOperationError(
+		context.getNode(),
+		`License server response had an unexpected type: ${typeof response}`,
+	);
+}
+
+function getLicenseCacheTtlMs(
+	response: IDataObject,
+	defaultTtlMs: number,
+): number {
+	const rawTtl = response.cacheTtlSeconds ?? response.cacheTTLSeconds ?? response.ttlSeconds;
+	const parsedTtl = Number(rawTtl);
+
+	if (!Number.isFinite(parsedTtl) || parsedTtl <= 0) {
+		return defaultTtlMs;
+	}
+
+	return parsedTtl * 1000;
+}
+
+function getLicenseCacheExpiry(
+	response: IDataObject,
+	defaultTtlMs: number,
+): number {
+	const rawExpiresAt = response.expiresAt ?? response.expires_at;
+
+	if (typeof rawExpiresAt === 'string' && rawExpiresAt.trim() !== '') {
+		const parsed = Date.parse(rawExpiresAt);
+
+		if (Number.isFinite(parsed)) {
+			return parsed;
+		}
+	}
+
+	if (typeof rawExpiresAt === 'number' && Number.isFinite(rawExpiresAt)) {
+		return rawExpiresAt > 1_000_000_000_000 ? rawExpiresAt : rawExpiresAt * 1000;
+	}
+
+	return Date.now() + getLicenseCacheTtlMs(response, defaultTtlMs);
+}
+
+function getLicenseErrorMessage(message: string | undefined): string {
+	return message?.trim() || 'La licencia del nodo no es valida o no esta activada';
+}
+
+function validateLicenseLocally(credentials: MobiliaCredentials): LicenseCacheEntry {
+	const valid = credentials.licenseKey.trim().length >= LOCAL_LICENSE_MIN_LENGTH;
+
+	return {
+		valid,
+		message: valid ? undefined : 'Introduce una licencia valida de al menos 10 caracteres',
+		expiresAt: Date.now() + (valid ? DEFAULT_LICENSE_CACHE_TTL_MS : INVALID_LICENSE_CACHE_TTL_MS),
+	};
+}
+
+async function validateLicenseRemotely(
+	context: MobiliaRequestContext,
+	credentials: MobiliaCredentials,
+): Promise<LicenseCacheEntry> {
+	const validationUrl = credentials.licenseValidationUrl?.trim();
+
+	if (!validationUrl) {
+		return validateLicenseLocally(credentials);
+	}
+
+	const response = (await context.helpers.httpRequest({
+		method: 'POST',
+		url: validationUrl,
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+		},
+		body: {
+			licenseKey: credentials.licenseKey.trim(),
+			product: 'n8n-nodes-mobilia',
+			nodeType: context.getNode().type,
+			nodeVersion: context.getNode().typeVersion,
+			baseUrl: normalizeBaseUrl(credentials.baseUrl),
+			clientId: credentials.clientId,
+		},
+		json: true,
+	})) as unknown;
+
+	const parsedResponse = parseLicenseResponse(context, response);
+	const rawValidity =
+		parsedResponse.valid ?? parsedResponse.active ?? parsedResponse.licensed ?? parsedResponse.allowed;
+
+	if (typeof rawValidity !== 'boolean') {
+		throw new NodeOperationError(
+			context.getNode(),
+			'License server response must include a boolean field named valid, active, licensed or allowed',
+		);
+	}
+
+	const message =
+		typeof parsedResponse.message === 'string'
+			? parsedResponse.message
+			: typeof parsedResponse.error === 'string'
+				? parsedResponse.error
+				: undefined;
+	const defaultTtlMs = rawValidity ? DEFAULT_LICENSE_CACHE_TTL_MS : INVALID_LICENSE_CACHE_TTL_MS;
+
+	return {
+		valid: rawValidity,
+		message,
+		expiresAt: getLicenseCacheExpiry(parsedResponse, defaultTtlMs),
+	};
+}
+
+async function ensureValidLicense(
+	context: MobiliaRequestContext,
+	credentials: MobiliaCredentials,
+): Promise<void> {
+	const cacheKey = buildLicenseCacheKey(credentials);
+	const cached = licenseCache.get(cacheKey);
+	const now = Date.now();
+
+	if (cached && cached.expiresAt > now) {
+		if (!cached.valid) {
+			throw new NodeOperationError(context.getNode(), getLicenseErrorMessage(cached.message));
+		}
+
+		return;
+	}
+
+	const validationResult = await validateLicenseRemotely(context, credentials);
+	licenseCache.set(cacheKey, validationResult);
+
+	if (!validationResult.valid) {
+		throw new NodeOperationError(
+			context.getNode(),
+			getLicenseErrorMessage(validationResult.message),
+		);
+	}
 }
 
 async function getAccessToken(
@@ -888,6 +1060,7 @@ export async function mobiliaAuthenticatedRequest(
 	requestOptions: MobiliaAuthenticatedRequestOptions,
 ): Promise<unknown> {
 	const credentials = (await context.getCredentials('mobiliaApi')) as unknown as MobiliaCredentials;
+	await ensureValidLicense(context, credentials);
 	const url = `${normalizeBaseUrl(credentials.baseUrl)}${requestOptions.path}`;
 
 	const executeRequest = async (forceTokenRefresh = false): Promise<unknown> => {

@@ -22,8 +22,30 @@ La credencial del nodo pide:
 - `Base URL`
 - `Client ID`
 - `Client Secret`
+- `License Key`
 
 Por defecto la URL es `https://api.mobiliagestion.es`.
+
+De forma opcional también puedes indicar `License Validation URL` si quieres validar la licencia contra tu propio servidor. Si ese campo queda vacío, el nodo usa la validación local configurada en el paquete.
+
+## Licencia del nodo
+
+El nodo puede distribuirse libremente, pero necesita una licencia para ejecutarse. En la configuración actual, cualquier clave con 10 o más caracteres activa el nodo.
+
+Si rellenas `License Validation URL`, el nodo hará un `POST` JSON a ese endpoint con este payload:
+
+```json
+{
+  "licenseKey": "tu-clave",
+  "product": "n8n-nodes-mobilia",
+  "nodeType": "n8n-nodes-mobilia.mobilia",
+  "nodeVersion": 1,
+  "baseUrl": "https://api.mobiliagestion.es",
+  "clientId": "..."
+}
+```
+
+El servidor puede responder con cualquiera de estos flags booleanos: `valid`, `active`, `licensed` o `allowed`. También puede devolver `message`, `expiresAt` o `cacheTtlSeconds` para controlar mejor la expiración de la validación.
 
 ## Uso en n8n
 

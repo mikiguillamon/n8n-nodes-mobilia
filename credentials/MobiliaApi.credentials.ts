@@ -37,6 +37,26 @@ export class MobiliaApi implements ICredentialType {
 			required: true,
 			description: 'Client secret entregado por Mobilia.',
 		},
+		{
+			displayName: 'License Key',
+			name: 'licenseKey',
+			type: 'string',
+			typeOptions: {
+				password: true,
+			},
+			default: '',
+			required: true,
+			description: 'Clave de licencia necesaria para activar el nodo.',
+		},
+		{
+			displayName: 'License Validation URL',
+			name: 'licenseValidationUrl',
+			type: 'string',
+			default: '',
+			description:
+				'Endpoint opcional para validar la licencia contra tu servidor. Si lo dejas vacío, se usa la validación local configurada en el nodo.',
+			placeholder: 'https://licencias.tudominio.com/api/v1/validate',
+		},
 	];
 
 	test: ICredentialTestRequest = {
