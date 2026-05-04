@@ -1410,6 +1410,777 @@ export interface MobiliaQueryFieldGroup {
 	placeholder: string;
 }
 
+export type MobiliaLocalFilterKind = 'boolean' | 'number' | 'string';
+export type MobiliaLocalFilterOperator = 'contains' | 'equals' | 'max' | 'min';
+
+export interface MobiliaLocalFilterDefinition {
+	description: string;
+	displayName: string;
+	kind: MobiliaLocalFilterKind;
+	name: string;
+	operator: MobiliaLocalFilterOperator;
+	path: string;
+	placeholder?: string;
+}
+
+export interface MobiliaLocalFilterGroup {
+	displayName: string;
+	name: string;
+	operationValues: string[];
+	placeholder: string;
+	filters: MobiliaLocalFilterDefinition[];
+}
+
+const inmuebleListOperationValues = ['inmueblesGetMany', 'inmueblesGetDisabled', 'inmueblesGetAll'] as const;
+const agenteListOperationValues = ['agentesGetMany'] as const;
+const clienteListOperationValues = ['clientesGetMany'] as const;
+const promocionListOperationValues = ['promocionesGetMany'] as const;
+const solicitudListOperationValues = ['solicitudesGetMany'] as const;
+const tareaListOperationValues = ['tareasGetMany'] as const;
+const visitaListOperationValues = ['visitasGetMany'] as const;
+
+const localStringFilter = (
+	name: string,
+	displayName: string,
+	path: string,
+	description: string,
+	placeholder?: string,
+	operator: MobiliaLocalFilterOperator = 'contains',
+): MobiliaLocalFilterDefinition => ({
+	name,
+	displayName,
+	path,
+	description,
+	placeholder,
+	operator,
+	kind: 'string',
+});
+
+const localNumberFilter = (
+	name: string,
+	displayName: string,
+	path: string,
+	description: string,
+	operator: MobiliaLocalFilterOperator,
+	placeholder?: string,
+): MobiliaLocalFilterDefinition => ({
+	name,
+	displayName,
+	path,
+	description,
+	placeholder,
+	operator,
+	kind: 'number',
+});
+
+const localBooleanFilter = (
+	name: string,
+	displayName: string,
+	path: string,
+	description: string,
+): MobiliaLocalFilterDefinition => ({
+	name,
+	displayName,
+	path,
+	description,
+	operator: 'equals',
+	kind: 'boolean',
+});
+
+const propertyAdvancedPriceFilters: MobiliaLocalFilterDefinition[] = [
+	{
+		name: 'precioVentaMinLocal',
+		displayName: 'Precio Venta Mínimo',
+		description: 'Filtra inmuebles con precio de venta igual o superior a este valor.',
+		kind: 'number',
+		operator: 'min',
+		path: 'precioVenta',
+		placeholder: '250000',
+	},
+	{
+		name: 'precioVentaMaxLocal',
+		displayName: 'Precio Venta Máximo',
+		description: 'Filtra inmuebles con precio de venta igual o inferior a este valor.',
+		kind: 'number',
+		operator: 'max',
+		path: 'precioVenta',
+		placeholder: '450000',
+	},
+	{
+		name: 'precioAlquilerMinLocal',
+		displayName: 'Precio Alquiler Mínimo',
+		description: 'Filtra inmuebles con precio de alquiler igual o superior a este valor.',
+		kind: 'number',
+		operator: 'min',
+		path: 'precioAlquiler',
+		placeholder: '900',
+	},
+	{
+		name: 'precioAlquilerMaxLocal',
+		displayName: 'Precio Alquiler Máximo',
+		description: 'Filtra inmuebles con precio de alquiler igual o inferior a este valor.',
+		kind: 'number',
+		operator: 'max',
+		path: 'precioAlquiler',
+		placeholder: '1500',
+	},
+	{
+		name: 'precioTraspasoMinLocal',
+		displayName: 'Precio Traspaso Mínimo',
+		description: 'Filtra inmuebles con precio de traspaso igual o superior a este valor.',
+		kind: 'number',
+		operator: 'min',
+		path: 'precioTraspaso',
+		placeholder: '30000',
+	},
+	{
+		name: 'precioTraspasoMaxLocal',
+		displayName: 'Precio Traspaso Máximo',
+		description: 'Filtra inmuebles con precio de traspaso igual o inferior a este valor.',
+		kind: 'number',
+		operator: 'max',
+		path: 'precioTraspaso',
+		placeholder: '120000',
+	},
+	{
+		name: 'precioM2VentaMinLocal',
+		displayName: 'Precio M2 Venta Mínimo',
+		description: 'Filtra inmuebles por precio de venta por metro cuadrado.',
+		kind: 'number',
+		operator: 'min',
+		path: 'precioM2Venta',
+		placeholder: '1500',
+	},
+	{
+		name: 'precioM2VentaMaxLocal',
+		displayName: 'Precio M2 Venta Máximo',
+		description: 'Filtra inmuebles por precio de venta por metro cuadrado.',
+		kind: 'number',
+		operator: 'max',
+		path: 'precioM2Venta',
+		placeholder: '3500',
+	},
+];
+
+const propertyAdvancedSizeFilters: MobiliaLocalFilterDefinition[] = [
+	{
+		name: 'metrosConstruidosMinLocal',
+		displayName: 'M2 Construidos Mínimos',
+		description: 'Filtra por metros construidos.',
+		kind: 'number',
+		operator: 'min',
+		path: 'caracteristicas.metrosConstruidos',
+		placeholder: '80',
+	},
+	{
+		name: 'metrosConstruidosMaxLocal',
+		displayName: 'M2 Construidos Máximos',
+		description: 'Filtra por metros construidos.',
+		kind: 'number',
+		operator: 'max',
+		path: 'caracteristicas.metrosConstruidos',
+		placeholder: '200',
+	},
+	{
+		name: 'metrosUtilesMinLocal',
+		displayName: 'M2 Útiles Mínimos',
+		description: 'Filtra por metros útiles.',
+		kind: 'number',
+		operator: 'min',
+		path: 'caracteristicas.metrosUtiles',
+		placeholder: '70',
+	},
+	{
+		name: 'metrosUtilesMaxLocal',
+		displayName: 'M2 Útiles Máximos',
+		description: 'Filtra por metros útiles.',
+		kind: 'number',
+		operator: 'max',
+		path: 'caracteristicas.metrosUtiles',
+		placeholder: '160',
+	},
+	{
+		name: 'metrosParcelaMinLocal',
+		displayName: 'M2 Parcela Mínimos',
+		description: 'Filtra por metros de parcela.',
+		kind: 'number',
+		operator: 'min',
+		path: 'caracteristicas.metrosParcela',
+		placeholder: '200',
+	},
+	{
+		name: 'metrosParcelaMaxLocal',
+		displayName: 'M2 Parcela Máximos',
+		description: 'Filtra por metros de parcela.',
+		kind: 'number',
+		operator: 'max',
+		path: 'caracteristicas.metrosParcela',
+		placeholder: '1000',
+	},
+	{
+		name: 'metrosTerrazasMinLocal',
+		displayName: 'M2 Terraza Mínimos',
+		description: 'Filtra por metros de terraza.',
+		kind: 'number',
+		operator: 'min',
+		path: 'caracteristicas.metrosTerrazas',
+		placeholder: '10',
+	},
+	{
+		name: 'metrosTerrazasMaxLocal',
+		displayName: 'M2 Terraza Máximos',
+		description: 'Filtra por metros de terraza.',
+		kind: 'number',
+		operator: 'max',
+		path: 'caracteristicas.metrosTerrazas',
+		placeholder: '60',
+	},
+	{
+		name: 'anoConstruccionDesdeLocal',
+		displayName: 'Año Construcción Desde',
+		description: 'Filtra inmuebles construidos a partir de este año.',
+		kind: 'number',
+		operator: 'min',
+		path: 'anoConstruccion',
+		placeholder: '2000',
+	},
+	{
+		name: 'anoConstruccionHastaLocal',
+		displayName: 'Año Construcción Hasta',
+		description: 'Filtra inmuebles construidos hasta este año.',
+		kind: 'number',
+		operator: 'max',
+		path: 'anoConstruccion',
+		placeholder: '2024',
+	},
+];
+
+const propertyAdvancedRoomFilters: MobiliaLocalFilterDefinition[] = [
+	{
+		name: 'habitacionesMinLocal',
+		displayName: 'Habitaciones Mínimas',
+		description: 'Filtra por número mínimo de habitaciones.',
+		kind: 'number',
+		operator: 'min',
+		path: 'caracteristicas.habitaciones',
+		placeholder: '2',
+	},
+	{
+		name: 'habitacionesMaxLocal',
+		displayName: 'Habitaciones Máximas',
+		description: 'Filtra por número máximo de habitaciones.',
+		kind: 'number',
+		operator: 'max',
+		path: 'caracteristicas.habitaciones',
+		placeholder: '4',
+	},
+	{
+		name: 'banosMinLocal',
+		displayName: 'Baños Mínimos',
+		description: 'Filtra por número mínimo de baños.',
+		kind: 'number',
+		operator: 'min',
+		path: 'caracteristicas.banos',
+		placeholder: '1',
+	},
+	{
+		name: 'banosMaxLocal',
+		displayName: 'Baños Máximos',
+		description: 'Filtra por número máximo de baños.',
+		kind: 'number',
+		operator: 'max',
+		path: 'caracteristicas.banos',
+		placeholder: '3',
+	},
+	{
+		name: 'aseosMinLocal',
+		displayName: 'Aseos Mínimos',
+		description: 'Filtra por número mínimo de aseos.',
+		kind: 'number',
+		operator: 'min',
+		path: 'caracteristicas.aseos',
+		placeholder: '1',
+	},
+	{
+		name: 'aseosMaxLocal',
+		displayName: 'Aseos Máximos',
+		description: 'Filtra por número máximo de aseos.',
+		kind: 'number',
+		operator: 'max',
+		path: 'caracteristicas.aseos',
+		placeholder: '2',
+	},
+	{
+		name: 'plazasParkingMinLocal',
+		displayName: 'Plazas Parking Mínimas',
+		description: 'Filtra por número mínimo de plazas de parking.',
+		kind: 'number',
+		operator: 'min',
+		path: 'caracteristicas.plazasParking',
+		placeholder: '1',
+	},
+	{
+		name: 'plazasGarajeMinLocal',
+		displayName: 'Plazas Garaje Mínimas',
+		description: 'Filtra por número mínimo de plazas de garaje.',
+		kind: 'number',
+		operator: 'min',
+		path: 'caracteristicas.plazasGaraje',
+		placeholder: '1',
+	},
+	{
+		name: 'terrazasMinLocal',
+		displayName: 'Terrazas Mínimas',
+		description: 'Filtra por número mínimo de terrazas.',
+		kind: 'number',
+		operator: 'min',
+		path: 'caracteristicas.terrazas',
+		placeholder: '1',
+	},
+];
+
+const propertyAdvancedLocationFilters: MobiliaLocalFilterDefinition[] = [
+	{
+		name: 'codigoPostalLocal',
+		displayName: 'Código Postal',
+		description: 'Busca por código postal.',
+		kind: 'string',
+		operator: 'contains',
+		path: 'codigoPostal',
+		placeholder: '29680',
+	},
+	{
+		name: 'poblacionLocal',
+		displayName: 'Población',
+		description: 'Busca por población.',
+		kind: 'string',
+		operator: 'contains',
+		path: 'poblacion',
+		placeholder: 'Estepona',
+	},
+	{
+		name: 'provinciaLocal',
+		displayName: 'Provincia',
+		description: 'Busca por provincia.',
+		kind: 'string',
+		operator: 'contains',
+		path: 'provincia',
+		placeholder: 'Málaga',
+	},
+	{
+		name: 'urbanizacionLocal',
+		displayName: 'Urbanización',
+		description: 'Busca por urbanización.',
+		kind: 'string',
+		operator: 'contains',
+		path: 'urbanizacion',
+		placeholder: 'Bahía Azul',
+	},
+	{
+		name: 'nombreZonaLocal',
+		displayName: 'Zona',
+		description: 'Busca por zona.',
+		kind: 'string',
+		operator: 'contains',
+		path: 'nombreZona',
+		placeholder: 'Centro',
+	},
+	{
+		name: 'direccionPublicaLocal',
+		displayName: 'Dirección Pública',
+		description: 'Busca por la dirección pública del inmueble.',
+		kind: 'string',
+		operator: 'contains',
+		path: 'direccionPublica',
+		placeholder: 'Avenida',
+	},
+	{
+		name: 'referenciaCatastralLocal',
+		displayName: 'Referencia Catastral',
+		description: 'Busca por referencia catastral.',
+		kind: 'string',
+		operator: 'contains',
+		path: 'referenciaCatastral',
+		placeholder: '1234567UF',
+	},
+];
+
+const propertyAdvancedFeatureFilters: MobiliaLocalFilterDefinition[] = [
+	{
+		name: 'activoLocal',
+		displayName: 'Activo',
+		description: 'Filtra por inmuebles activos o inactivos.',
+		kind: 'boolean',
+		operator: 'equals',
+		path: 'activo',
+	},
+	{
+		name: 'publicarEnWebLocal',
+		displayName: 'Publicado En Web',
+		description: 'Filtra por inmuebles publicados o no publicados en web.',
+		kind: 'boolean',
+		operator: 'equals',
+		path: 'publicarEnWeb',
+	},
+	{
+		name: 'reservadoLocal',
+		displayName: 'Reservado',
+		description: 'Filtra por inmuebles reservados.',
+		kind: 'boolean',
+		operator: 'equals',
+		path: 'reservado',
+	},
+	{
+		name: 'amuebladoLocal',
+		displayName: 'Amueblado',
+		description: 'Filtra por inmuebles amueblados.',
+		kind: 'boolean',
+		operator: 'equals',
+		path: 'caracteristicas.amueblado',
+	},
+	{
+		name: 'jardinLocal',
+		displayName: 'Jardín',
+		description: 'Filtra por inmuebles con jardín.',
+		kind: 'boolean',
+		operator: 'equals',
+		path: 'caracteristicas.jardin',
+	},
+	{
+		name: 'piscinaPrivadaLocal',
+		displayName: 'Piscina Privada',
+		description: 'Filtra por inmuebles con piscina privada.',
+		kind: 'boolean',
+		operator: 'equals',
+		path: 'caracteristicas.piscinaPrivada',
+	},
+	{
+		name: 'piscinaComunitariaLocal',
+		displayName: 'Piscina Comunitaria',
+		description: 'Filtra por inmuebles con piscina comunitaria.',
+		kind: 'boolean',
+		operator: 'equals',
+		path: 'caracteristicas.piscinaComunitaria',
+	},
+	{
+		name: 'ascensorLocal',
+		displayName: 'Ascensor',
+		description: 'Filtra por inmuebles con ascensor.',
+		kind: 'boolean',
+		operator: 'equals',
+		path: 'caracteristicas.ascensor',
+	},
+	{
+		name: 'aireAcondicionadoLocal',
+		displayName: 'Aire Acondicionado',
+		description: 'Filtra por inmuebles con aire acondicionado.',
+		kind: 'boolean',
+		operator: 'equals',
+		path: 'caracteristicas.aireAcondicionado',
+	},
+	{
+		name: 'admiteMascotasLocal',
+		displayName: 'Admite Mascotas',
+		description: 'Filtra por inmuebles que admiten mascotas.',
+		kind: 'boolean',
+		operator: 'equals',
+		path: 'caracteristicas.admiteMascotas',
+	},
+	{
+		name: 'trasteroLocal',
+		displayName: 'Con Trastero',
+		description: 'Filtra por inmuebles con al menos un trastero.',
+		kind: 'number',
+		operator: 'min',
+		path: 'caracteristicas.trastero',
+		placeholder: '1',
+	},
+	{
+		name: 'primeraLineaPlayaLocal',
+		displayName: 'Primera Línea De Playa',
+		description: 'Filtra por inmuebles en primera línea de playa.',
+		kind: 'boolean',
+		operator: 'equals',
+		path: 'caracteristicas.primeraLineaPlaya',
+	},
+];
+
+export const mobiliaPropertyAdvancedFilterGroups: MobiliaLocalFilterGroup[] = [
+	{
+		name: 'propertyAdvancedPriceFilters',
+		displayName: 'Filtros Avanzados De Precio',
+		operationValues: [...inmuebleListOperationValues],
+		placeholder: 'Añadir filtro de precio',
+		filters: propertyAdvancedPriceFilters,
+	},
+	{
+		name: 'propertyAdvancedSizeFilters',
+		displayName: 'Filtros Avanzados De Superficie',
+		operationValues: [...inmuebleListOperationValues],
+		placeholder: 'Añadir filtro de superficie',
+		filters: propertyAdvancedSizeFilters,
+	},
+	{
+		name: 'propertyAdvancedRoomFilters',
+		displayName: 'Filtros Avanzados De Estancias',
+		operationValues: [...inmuebleListOperationValues],
+		placeholder: 'Añadir filtro de estancias',
+		filters: propertyAdvancedRoomFilters,
+	},
+	{
+		name: 'propertyAdvancedLocationFilters',
+		displayName: 'Filtros Avanzados De Ubicación',
+		operationValues: [...inmuebleListOperationValues],
+		placeholder: 'Añadir filtro de ubicación',
+		filters: propertyAdvancedLocationFilters,
+	},
+	{
+		name: 'propertyAdvancedFeatureFilters',
+		displayName: 'Filtros Avanzados De Características',
+		operationValues: [...inmuebleListOperationValues],
+		placeholder: 'Añadir filtro de características',
+		filters: propertyAdvancedFeatureFilters,
+	},
+];
+
+export const mobiliaPropertyAdvancedFilterDefinitions = mobiliaPropertyAdvancedFilterGroups.flatMap(
+	(group) => group.filters,
+);
+
+export const mobiliaAgentAdvancedFilterGroups: MobiliaLocalFilterGroup[] = [
+	{
+		name: 'agentAdvancedIdentityFilters',
+		displayName: 'Filtros Avanzados De Identidad',
+		operationValues: [...agenteListOperationValues],
+		placeholder: 'Añadir filtro de agente',
+		filters: [
+			localNumberFilter('agentIdMinLocal', 'ID Agente Mínimo', 'idAgente', 'Filtra por ID mínimo de agente.', 'min', '1'),
+			localNumberFilter('agentIdMaxLocal', 'ID Agente Máximo', 'idAgente', 'Filtra por ID máximo de agente.', 'max', '9999'),
+			localStringFilter('agentNameLocal', 'Nombre', 'nombreUsuario', 'Busca por nombre del agente.', 'María'),
+			localStringFilter('agentEmailLocal', 'Email', 'email', 'Busca por email del agente.', 'agente@dominio.com'),
+		],
+	},
+];
+
+export const mobiliaClientAdvancedFilterGroups: MobiliaLocalFilterGroup[] = [
+	{
+		name: 'clientAdvancedIdentityFilters',
+		displayName: 'Filtros Avanzados De Identidad',
+		operationValues: [...clienteListOperationValues],
+		placeholder: 'Añadir filtro de identidad',
+		filters: [
+			localNumberFilter('clientReferenceMinLocal', 'Referencia Mínima', 'referencia', 'Filtra por referencia mínima de cliente.', 'min', '1000'),
+			localNumberFilter('clientReferenceMaxLocal', 'Referencia Máxima', 'referencia', 'Filtra por referencia máxima de cliente.', 'max', '9999'),
+			localStringFilter('clientDniLocal', 'DNI', 'dni', 'Busca por DNI.', '12345678A'),
+			localStringFilter('clientNameLocal', 'Nombre', 'nombre', 'Busca por nombre.', 'Juan'),
+			localStringFilter('clientAliasLocal', 'Alias', 'alias', 'Busca por alias.', 'Inversor Centro'),
+			localStringFilter('clientEmailLocal', 'Email', 'email', 'Busca por email.', 'cliente@dominio.com'),
+		],
+	},
+	{
+		name: 'clientAdvancedContactFilters',
+		displayName: 'Filtros Avanzados De Contacto',
+		operationValues: [...clienteListOperationValues],
+		placeholder: 'Añadir filtro de contacto',
+		filters: [
+			localStringFilter('clientPhoneLocal', 'Teléfono', 'telefonoMovil', 'Busca por teléfono móvil.', '600'),
+			localStringFilter('clientAddressLocal', 'Dirección', 'direccion', 'Busca por dirección.', 'Calle Real'),
+			localStringFilter('clientPostalCodeLocal', 'Código Postal', 'codigoPostal', 'Busca por código postal.', '28001'),
+			localStringFilter('clientNotesLocal', 'Observaciones', 'observaciones', 'Busca por observaciones.', 'inversor'),
+		],
+	},
+	{
+		name: 'clientAdvancedClassificationFilters',
+		displayName: 'Filtros Avanzados De Clasificación',
+		operationValues: [...clienteListOperationValues],
+		placeholder: 'Añadir filtro de clasificación',
+		filters: [
+			localBooleanFilter('clientOwnerLocal', 'Propietario', 'propietario', 'Filtra por clientes propietarios.'),
+			localBooleanFilter('clientBuyerLocal', 'Demandante', 'demandante', 'Filtra por clientes demandantes.'),
+			localBooleanFilter('clientCustomerLocal', 'Cliente', 'tipoCliente', 'Filtra por clientes marcados como cliente.'),
+			localBooleanFilter('clientNewsletterLocal', 'Newsletter', 'tipoNewsletter', 'Filtra por clientes suscritos a newsletter.'),
+			localBooleanFilter('clientEmailAlertsLocal', 'Recibe Alertas Email', 'recibirAlertasEmail', 'Filtra por recepción de alertas email.'),
+			localBooleanFilter('clientManualEmailsLocal', 'Recibe Emails Manuales', 'recibirEmailManuales', 'Filtra por recepción de emails manuales.'),
+		],
+	},
+];
+
+export const mobiliaPromotionAdvancedFilterGroups: MobiliaLocalFilterGroup[] = [
+	{
+		name: 'promotionAdvancedIdentityFilters',
+		displayName: 'Filtros Avanzados De Identidad',
+		operationValues: [...promocionListOperationValues],
+		placeholder: 'Añadir filtro de promoción',
+		filters: [
+			localStringFilter('promotionReferenceLocal', 'Referencia', 'referencia', 'Busca por referencia de promoción.', 'PROMO-001'),
+			localStringFilter('promotionNameLocal', 'Nombre', 'nombre', 'Busca por nombre de promoción.', 'Residencial'),
+			localStringFilter('promotionBuilderLocal', 'Constructor', 'constructor', 'Busca por constructor.', 'Sacyr'),
+			localStringFilter('promotionDeveloperLocal', 'Promotor', 'promotor', 'Busca por promotor.', 'Grupo Costa'),
+		],
+	},
+	{
+		name: 'promotionAdvancedAvailabilityFilters',
+		displayName: 'Filtros Avanzados De Disponibilidad',
+		operationValues: [...promocionListOperationValues],
+		placeholder: 'Añadir filtro de disponibilidad',
+		filters: [
+			localBooleanFilter('promotionAvailableLocal', 'Disponible', 'disponible', 'Filtra por promociones disponibles.'),
+			localBooleanFilter('promotionPublishWebLocal', 'Publicado En Web', 'publicarEnWeb', 'Filtra por promociones publicadas en web.'),
+			localBooleanFilter('promotionFeaturedLocal', 'Destacada', 'destacada', 'Filtra por promociones destacadas.'),
+			localBooleanFilter('promotionPoolLocal', 'Piscina', 'piscina', 'Filtra por promociones con piscina.'),
+			localBooleanFilter('promotionGardenLocal', 'Jardín', 'jardin', 'Filtra por promociones con jardín.'),
+			localBooleanFilter('promotionGarageLocal', 'Garaje', 'garaje', 'Filtra por promociones con garaje.'),
+			localBooleanFilter('promotionStorageLocal', 'Trastero', 'trastero', 'Filtra por promociones con trastero.'),
+		],
+	},
+	{
+		name: 'promotionAdvancedLocationFilters',
+		displayName: 'Filtros Avanzados De Ubicación',
+		operationValues: [...promocionListOperationValues],
+		placeholder: 'Añadir filtro de ubicación',
+		filters: [
+			localStringFilter('promotionTownLocal', 'Población', 'poblacion', 'Busca por población.', 'Marbella'),
+			localStringFilter('promotionProvinceLocal', 'Provincia', 'provincia', 'Busca por provincia.', 'Málaga'),
+			localStringFilter('promotionStreetLocal', 'Calle', 'calle', 'Busca por calle.', 'Avenida del Mar'),
+			localStringFilter('promotionPostalCodeLocal', 'Código Postal', 'codigoPostal', 'Busca por código postal.', '29600'),
+			localNumberFilter('promotionYearMinLocal', 'Año Construcción Desde', 'anoConstruccion', 'Filtra promociones construidas a partir de este año.', 'min', '2020'),
+			localNumberFilter('promotionYearMaxLocal', 'Año Construcción Hasta', 'anoConstruccion', 'Filtra promociones construidas hasta este año.', 'max', '2026'),
+		],
+	},
+];
+
+export const mobiliaRequestAdvancedFilterGroups: MobiliaLocalFilterGroup[] = [
+	{
+		name: 'requestAdvancedIdentityFilters',
+		displayName: 'Filtros Avanzados De Identidad',
+		operationValues: [...solicitudListOperationValues],
+		placeholder: 'Añadir filtro de solicitud',
+		filters: [
+			localNumberFilter('requestReferenceMinLocal', 'Referencia Mínima', 'referencia', 'Filtra por referencia mínima.', 'min', '1'),
+			localNumberFilter('requestReferenceMaxLocal', 'Referencia Máxima', 'referencia', 'Filtra por referencia máxima.', 'max', '9999'),
+			localStringFilter('requestNameLocal', 'Nombre', 'nombre', 'Busca por nombre del lead.', 'Lucía'),
+			localStringFilter('requestEmailLocal', 'Email', 'email', 'Busca por email del lead.', 'lead@dominio.com'),
+			localStringFilter('requestPhoneLocal', 'Teléfono', 'telefono', 'Busca por teléfono del lead.', '600'),
+		],
+	},
+	{
+		name: 'requestAdvancedBusinessFilters',
+		displayName: 'Filtros Avanzados De Negocio',
+		operationValues: [...solicitudListOperationValues],
+		placeholder: 'Añadir filtro de negocio',
+		filters: [
+			localNumberFilter('requestAgentIdLocal', 'ID Agente', 'idAgente', 'Filtra por ID de agente.', 'equals', '12'),
+			localNumberFilter('requestCampaignIdLocal', 'ID Campaña', 'idCampana', 'Filtra por ID de campaña.', 'equals', '5'),
+			localNumberFilter('requestClientIdLocal', 'ID Cliente', 'idCliente', 'Filtra por ID de cliente.', 'equals', '1234'),
+			localStringFilter('requestTownLocal', 'Población', 'poblacion', 'Busca por población.', 'Valencia'),
+			localStringFilter('requestZoneLocal', 'Zona', 'zona', 'Busca por zona.', 'Centro'),
+			localNumberFilter('requestPriceMaxMinLocal', 'Precio Máximo Mínimo', 'precioMaximo', 'Filtra solicitudes cuyo precio máximo sea igual o superior a este valor.', 'min', '200000'),
+			localNumberFilter('requestPriceMaxMaxLocal', 'Precio Máximo Máximo', 'precioMaximo', 'Filtra solicitudes cuyo precio máximo sea igual o inferior a este valor.', 'max', '500000'),
+		],
+	},
+	{
+		name: 'requestAdvancedContentFilters',
+		displayName: 'Filtros Avanzados De Contenido',
+		operationValues: [...solicitudListOperationValues],
+		placeholder: 'Añadir filtro de contenido',
+		filters: [
+			localStringFilter('requestMessageLocal', 'Mensaje', 'mensaje', 'Busca por contenido del mensaje.', 'ático'),
+		],
+	},
+];
+
+export const mobiliaTaskAdvancedFilterGroups: MobiliaLocalFilterGroup[] = [
+	{
+		name: 'taskAdvancedIdentityFilters',
+		displayName: 'Filtros Avanzados De Identidad',
+		operationValues: [...tareaListOperationValues],
+		placeholder: 'Añadir filtro de tarea',
+		filters: [
+			localNumberFilter('taskIdMinLocal', 'ID Tarea Mínimo', 'idTarea', 'Filtra por ID mínimo de tarea.', 'min', '1'),
+			localNumberFilter('taskIdMaxLocal', 'ID Tarea Máximo', 'idTarea', 'Filtra por ID máximo de tarea.', 'max', '9999'),
+			localStringFilter('taskSubjectLocal', 'Asunto', 'asunto', 'Busca por asunto.', 'Seguimiento'),
+			localStringFilter('taskCommentsLocal', 'Comentarios', 'comentarios', 'Busca por comentarios.', 'llamar'),
+		],
+	},
+	{
+		name: 'taskAdvancedRelationFilters',
+		displayName: 'Filtros Avanzados De Relaciones',
+		operationValues: [...tareaListOperationValues],
+		placeholder: 'Añadir filtro de relación',
+		filters: [
+			localNumberFilter('taskAgentIdLocal', 'ID Agente', 'idAgente', 'Filtra por ID de agente.', 'equals', '12'),
+			localNumberFilter('taskStateIdLocal', 'ID Estado Tarea', 'idEstadoTarea', 'Filtra por ID de estado de tarea.', 'equals', '1'),
+			localNumberFilter('taskTypeIdLocal', 'ID Tipo', 'idTipo', 'Filtra por ID de tipo.', 'equals', '3'),
+			localNumberFilter('taskClientRefLocal', 'Referencia Cliente', 'referenciaCliente', 'Filtra por referencia de cliente.', 'equals', '1001'),
+			localStringFilter('taskPropertyRefLocal', 'Referencia Inmueble', 'referenciaInmueble', 'Busca por referencia de inmueble.', 'REF-001', 'equals'),
+			localNumberFilter('taskRequestRefLocal', 'Referencia Solicitud', 'referenciaSolicitud', 'Filtra por referencia de solicitud.', 'equals', '555'),
+		],
+	},
+	{
+		name: 'taskAdvancedStatusFilters',
+		displayName: 'Filtros Avanzados De Estado',
+		operationValues: [...tareaListOperationValues],
+		placeholder: 'Añadir filtro de estado',
+		filters: [
+			localStringFilter('taskStateTextLocal', 'Estado Texto', 'estado', 'Busca por nombre del estado.', 'Pendiente', 'equals'),
+			localBooleanFilter('taskSyncLocal', 'Sincronizar', 'sincronizar', 'Filtra por tareas sincronizadas con calendario.'),
+		],
+	},
+];
+
+export const mobiliaVisitAdvancedFilterGroups: MobiliaLocalFilterGroup[] = [
+	{
+		name: 'visitAdvancedIdentityFilters',
+		displayName: 'Filtros Avanzados De Identidad',
+		operationValues: [...visitaListOperationValues],
+		placeholder: 'Añadir filtro de visita',
+		filters: [
+			localNumberFilter('visitIdMinLocal', 'ID Visita Mínimo', 'idVisita', 'Filtra por ID mínimo de visita.', 'min', '1'),
+			localNumberFilter('visitIdMaxLocal', 'ID Visita Máximo', 'idVisita', 'Filtra por ID máximo de visita.', 'max', '9999'),
+			localStringFilter('visitPlaceLocal', 'Lugar', 'lugar', 'Busca por lugar de la visita.', 'Oficina'),
+			localStringFilter('visitOperationLocal', 'Operación', 'operacion', 'Busca por operación.', 'Venta', 'equals'),
+		],
+	},
+	{
+		name: 'visitAdvancedRelationFilters',
+		displayName: 'Filtros Avanzados De Relaciones',
+		operationValues: [...visitaListOperationValues],
+		placeholder: 'Añadir filtro de relación',
+		filters: [
+			localNumberFilter('visitAgentIdLocal', 'ID Agente', 'idAgente', 'Filtra por ID de agente.', 'equals', '12'),
+			localNumberFilter('visitStateIdLocal', 'ID Estado Visita', 'idEstadoVisita', 'Filtra por ID de estado de visita.', 'equals', '2'),
+			localNumberFilter('visitTypeIdLocal', 'ID Tipo', 'idTipo', 'Filtra por ID de tipo.', 'equals', '3'),
+			localNumberFilter('visitClientRefLocal', 'Referencia Cliente', 'referenciaCliente', 'Filtra por referencia de cliente.', 'equals', '1001'),
+			localNumberFilter('visitPropertyRefLocal', 'Referencia Inmueble', 'referenciaInmueble', 'Filtra por referencia de inmueble.', 'equals', '2001'),
+			localNumberFilter('visitRequestRefLocal', 'Referencia Solicitud', 'referenciaSolicitud', 'Filtra por referencia de solicitud.', 'equals', '555'),
+		],
+	},
+	{
+		name: 'visitAdvancedStatusFilters',
+		displayName: 'Filtros Avanzados De Estado',
+		operationValues: [...visitaListOperationValues],
+		placeholder: 'Añadir filtro de estado',
+		filters: [
+			localBooleanFilter('visitSyncLocal', 'Sincronizar', 'sincronizar', 'Filtra por visitas sincronizadas con calendario.'),
+		],
+	},
+];
+
+export const mobiliaAdvancedFilterGroups: MobiliaLocalFilterGroup[] = [
+	...mobiliaPropertyAdvancedFilterGroups,
+	...mobiliaAgentAdvancedFilterGroups,
+	...mobiliaClientAdvancedFilterGroups,
+	...mobiliaPromotionAdvancedFilterGroups,
+	...mobiliaRequestAdvancedFilterGroups,
+	...mobiliaTaskAdvancedFilterGroups,
+	...mobiliaVisitAdvancedFilterGroups,
+];
+
+export const mobiliaAdvancedFilterDefinitions = mobiliaAdvancedFilterGroups.flatMap((group) => group.filters);
+export const mobiliaAdvancedFilterOperationValues = Array.from(
+	new Set(mobiliaAdvancedFilterGroups.flatMap((group) => group.operationValues)),
+);
+
 const paginationFieldNames = new Set(['NumeroPagina', 'Ordenacion', 'OrdenarPor', 'TamanoPagina']);
 const presentationFieldNames = new Set(['DescripcionImagenes', 'MarcaAguaImagenes']);
 const standaloneQueryFieldNames = new Set(['Busqueda']);
@@ -1669,6 +2440,95 @@ export function getQueryCollectionFieldNames(operation: MobiliaOperation): Set<s
 	return new Set(getQueryFieldGroups(operation).flatMap((group) => group.fields.map((field) => field.name)));
 }
 
+export function isInmuebleListOperation(operation: MobiliaOperation | undefined): boolean {
+	return Boolean(operation && inmuebleListOperationValues.includes(operation.value as never));
+}
+
+export function isAdvancedFilterOperation(operation: MobiliaOperation | undefined): boolean {
+	return Boolean(
+		operation && mobiliaAdvancedFilterOperationValues.includes(operation.value),
+	);
+}
+
+export function getAdvancedFilterGroupsForOperation(
+	operation: MobiliaOperation | undefined,
+): MobiliaLocalFilterGroup[] {
+	if (!operation) {
+		return [];
+	}
+
+	return mobiliaAdvancedFilterGroups.filter((group) => group.operationValues.includes(operation.value));
+}
+
+function getLocalFilterDefaultValue(filter: MobiliaLocalFilterDefinition): INodeProperties['default'] {
+	if (filter.kind === 'boolean') {
+		return '__unset';
+	}
+
+	return '';
+}
+
+function getLocalFilterPropertyOptions(
+	filter: MobiliaLocalFilterDefinition,
+): INodeProperties['options'] | undefined {
+	if (filter.kind !== 'boolean') {
+		return undefined;
+	}
+
+	return [
+		{ name: 'No Definir', value: '__unset' },
+		{ name: 'Sí', value: 'true' },
+		{ name: 'No', value: 'false' },
+	];
+}
+
+function buildLocalFilterOption(filter: MobiliaLocalFilterDefinition): INodeProperties {
+	return {
+		displayName: filter.displayName,
+		name: filter.name,
+		type: filter.kind === 'boolean' ? 'options' : 'string',
+		default: getLocalFilterDefaultValue(filter),
+		options: getLocalFilterPropertyOptions(filter),
+		placeholder: filter.placeholder,
+		description: filter.description,
+	};
+}
+
+function buildAdvancedFilterProperties(): INodeProperties[] {
+	const groupedProperties: INodeProperties[] = mobiliaAdvancedFilterGroups.map((group) => ({
+		displayName: group.displayName,
+		name: group.name,
+		type: 'collection',
+		default: {},
+		placeholder: group.placeholder,
+		description:
+			'Se aplican en el nodo después de recuperar los registros. Si hace falta, el nodo recorre todas las páginas para devolver resultados coherentes.',
+		displayOptions: {
+			show: {
+				operation: group.operationValues,
+			},
+		},
+		options: group.filters.map((filter) => buildLocalFilterOption(filter)),
+	}));
+
+	return [
+		...groupedProperties,
+		{
+			displayName: 'Filtros Avanzados JSON',
+			name: 'propertyAdvancedJsonRules',
+			type: 'json',
+			default: '[]',
+			description:
+				'Reglas opcionales para cualquier campo escalar del recurso listado. Ejemplo: [{"path":"caracteristicas.panelSolar","operator":"equals","value":true},{"path":"precioVenta","operator":"max","value":450000}].',
+			displayOptions: {
+				show: {
+					operation: mobiliaAdvancedFilterOperationValues,
+				},
+			},
+		},
+	];
+}
+
 function buildCollectionOption(
 	field: MobiliaFieldDefinition,
 	operation: MobiliaOperation,
@@ -1808,6 +2668,7 @@ export const mobiliaNodeProperties: INodeProperties[] = [
 		default: 'clientes',
 	},
 	...buildOperationProperties(),
+	...buildAdvancedFilterProperties(),
 	{
 		displayName: 'Método',
 		name: 'customMethod',

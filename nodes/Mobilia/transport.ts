@@ -7,11 +7,15 @@ import type {
 import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 import {
 	getFieldPropertyName,
+	getAdvancedFilterGroupsForOperation,
+	isAdvancedFilterOperation,
 	getQueryCollectionFieldNames,
 	getQueryCollectionPropertyName,
 	getQueryFieldGroups,
+	mobiliaAdvancedFilterDefinitions,
 	type MobiliaFieldDefinition,
 	type MobiliaHttpMethod,
+	type MobiliaLocalFilterDefinition,
 	type MobiliaOperation,
 } from './operations';
 
@@ -30,6 +34,12 @@ interface MobiliaAuthenticatedRequestOptions {
 	method: MobiliaHttpMethod;
 	path: string;
 	qs?: IDataObject;
+}
+
+interface MobiliaCustomPropertyRule {
+	operator: 'contains' | 'equals' | 'max' | 'min';
+	path: string;
+	value: boolean | number | string;
 }
 
 interface TokenCacheEntry {
@@ -52,6 +62,21 @@ function parseJsonField(context: IExecuteFunctions, value: string, label: string
 			throw new Error(`${label} must be a JSON object`);
 		}
 		return parsed as IDataObject;
+	} catch (error) {
+		throw new NodeOperationError(
+			context.getNode(),
+			`${label} is not valid JSON: ${(error as Error).message}`,
+		);
+	}
+}
+
+function parseJsonArrayField(context: IExecuteFunctions, value: string, label: string): unknown[] {
+	try {
+		const parsed = JSON.parse(value);
+		if (!Array.isArray(parsed)) {
+			throw new Error(`${label} must be a JSON array`);
+		}
+		return parsed;
 	} catch (error) {
 		throw new NodeOperationError(
 			context.getNode(),
@@ -287,6 +312,305 @@ function collectQueryCollectionValues(
 	return data;
 }
 
+function getLocalFilterValue(
+	context: IExecuteFunctions,
+	filter: MobiliaLocalFilterDefinition,
+	rawValue: unknown,
+): boolean | number | string | undefined {
+	if (filter.kind === 'boolean') {
+		if (rawValue === '__unset' || rawValue === undefined || rawValue === '') {
+			return undefined;
+		}
+
+		if (typeof rawValue === 'boolean') {
+			return rawValue;
+		}
+
+		return rawValue === 'true';
+	}
+
+	if (filter.kind === 'number') {
+		if (typeof rawValue === 'number') {
+			return Number.isFinite(rawValue) ? rawValue : undefined;
+		}
+
+		if (typeof rawValue !== 'string' || rawValue.trim() === '') {
+			return undefined;
+		}
+
+		const parsed = Number(rawValue);
+
+		if (!Number.isFinite(parsed)) {
+			throw new NodeOperationError(
+				context.getNode(),
+				`Field "${filter.displayName}" must be a valid number`,
+			);
+		}
+
+		return parsed;
+	}
+
+	if (typeof rawValue !== 'string' || rawValue.trim() === '') {
+		return undefined;
+	}
+
+	return rawValue.trim();
+}
+
+function collectAdvancedFilters(
+	context: IExecuteFunctions,
+	itemIndex: number,
+	operation: MobiliaOperation | undefined,
+): Record<string, boolean | number | string> {
+	if (!isAdvancedFilterOperation(operation)) {
+		return {};
+	}
+
+	const filters: Record<string, boolean | number | string> = {};
+
+	for (const group of getAdvancedFilterGroupsForOperation(operation)) {
+		const values = context.getNodeParameter(group.name, itemIndex, {}) as IDataObject;
+
+		for (const filter of group.filters) {
+			const value = getLocalFilterValue(context, filter, values[filter.name]);
+
+			if (value !== undefined) {
+				filters[filter.name] = value;
+			}
+		}
+	}
+
+	return filters;
+}
+
+function hasAdvancedFilters(filters: Record<string, boolean | number | string>): boolean {
+	return Object.keys(filters).length > 0;
+}
+
+function collectAdvancedJsonRules(
+	context: IExecuteFunctions,
+	itemIndex: number,
+	operation: MobiliaOperation | undefined,
+): MobiliaCustomPropertyRule[] {
+	if (!isAdvancedFilterOperation(operation)) {
+		return [];
+	}
+
+	const rawValue = context.getNodeParameter('propertyAdvancedJsonRules', itemIndex, '[]') as string;
+	const parsed = parseJsonArrayField(context, rawValue, 'Property Advanced JSON Rules');
+	const rules: MobiliaCustomPropertyRule[] = [];
+
+	for (const entry of parsed) {
+		if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+			throw new NodeOperationError(
+				context.getNode(),
+				'Each advanced JSON rule must be an object with path, operator and value',
+			);
+		}
+
+		const candidate = entry as IDataObject;
+		const path = candidate.path;
+		const operator = candidate.operator;
+		const value = candidate.value;
+
+		if (typeof path !== 'string' || path.trim() === '') {
+			throw new NodeOperationError(context.getNode(), 'Each advanced JSON rule requires a non-empty path');
+		}
+
+		if (
+			operator !== 'contains' &&
+			operator !== 'equals' &&
+			operator !== 'min' &&
+			operator !== 'max'
+		) {
+			throw new NodeOperationError(
+				context.getNode(),
+				'Each advanced JSON rule requires an operator: contains, equals, min or max',
+			);
+		}
+
+		if (
+			typeof value !== 'string' &&
+			typeof value !== 'number' &&
+			typeof value !== 'boolean'
+		) {
+			throw new NodeOperationError(
+				context.getNode(),
+				'Each advanced JSON rule requires a scalar value: string, number or boolean',
+			);
+		}
+
+		rules.push({
+			path: path.trim(),
+			operator,
+			value,
+		});
+	}
+
+	return rules;
+}
+
+function getNestedValue(data: IDataObject, path: string): unknown {
+	return path.split('.').reduce<unknown>((current, segment) => {
+		if (!current || typeof current !== 'object' || Array.isArray(current)) {
+			return undefined;
+		}
+
+		return (current as IDataObject)[segment];
+	}, data);
+}
+
+function matchesPropertyAdvancedFilters(
+	item: IDataObject,
+	filters: Record<string, boolean | number | string>,
+): boolean {
+	for (const filterDefinition of mobiliaAdvancedFilterDefinitions) {
+		const expectedValue = filters[filterDefinition.name];
+
+		if (expectedValue === undefined) {
+			continue;
+		}
+
+		const actualValue = getNestedValue(item, filterDefinition.path);
+
+		if (actualValue === undefined || actualValue === null) {
+			return false;
+		}
+
+		if (filterDefinition.kind === 'string') {
+			const actualText = String(actualValue).toLocaleLowerCase('es');
+			const expectedText = String(expectedValue).toLocaleLowerCase('es');
+
+			if (filterDefinition.operator === 'equals') {
+				if (actualText !== expectedText) {
+					return false;
+				}
+			} else if (!actualText.includes(expectedText)) {
+				return false;
+			}
+
+			continue;
+		}
+
+		if (filterDefinition.kind === 'boolean') {
+			if (Boolean(actualValue) !== expectedValue) {
+				return false;
+			}
+
+			continue;
+		}
+
+		const actualNumber = Number(actualValue);
+		const expectedNumber = Number(expectedValue);
+
+		if (!Number.isFinite(actualNumber) || !Number.isFinite(expectedNumber)) {
+			return false;
+		}
+
+		if (filterDefinition.operator === 'min' && actualNumber < expectedNumber) {
+			return false;
+		}
+
+		if (filterDefinition.operator === 'max' && actualNumber > expectedNumber) {
+			return false;
+		}
+
+		if (filterDefinition.operator === 'equals' && actualNumber !== expectedNumber) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+function matchesCustomPropertyRule(item: IDataObject, rule: MobiliaCustomPropertyRule): boolean {
+	const actualValue = getNestedValue(item, rule.path);
+
+	if (actualValue === undefined || actualValue === null) {
+		return false;
+	}
+
+	if (typeof rule.value === 'string') {
+		const actualText = String(actualValue).toLocaleLowerCase('es');
+		const expectedText = rule.value.toLocaleLowerCase('es');
+
+		if (rule.operator === 'equals') {
+			return actualText === expectedText;
+		}
+
+		if (rule.operator === 'contains') {
+			return actualText.includes(expectedText);
+		}
+	}
+
+	if (typeof rule.value === 'boolean') {
+		if (rule.operator !== 'equals') {
+			return false;
+		}
+
+		return Boolean(actualValue) === rule.value;
+	}
+
+	const actualNumber = Number(actualValue);
+	const expectedNumber = Number(rule.value);
+
+	if (!Number.isFinite(actualNumber) || !Number.isFinite(expectedNumber)) {
+		return false;
+	}
+
+	if (rule.operator === 'min') {
+		return actualNumber >= expectedNumber;
+	}
+
+	if (rule.operator === 'max') {
+		return actualNumber <= expectedNumber;
+	}
+
+	if (rule.operator === 'equals') {
+		return actualNumber === expectedNumber;
+	}
+
+	return false;
+}
+
+function applyAdvancedFilters(
+	data: unknown,
+	filters: Record<string, boolean | number | string>,
+	customRules: MobiliaCustomPropertyRule[],
+): unknown {
+	if (!hasAdvancedFilters(filters) && customRules.length === 0) {
+		return data;
+	}
+
+	if (Array.isArray(data)) {
+		return (data as IDataObject[]).filter(
+			(item) =>
+				matchesPropertyAdvancedFilters(item, filters) &&
+				customRules.every((rule) => matchesCustomPropertyRule(item, rule)),
+		);
+	}
+
+	if (
+		data &&
+		typeof data === 'object' &&
+		!Array.isArray(data) &&
+		Array.isArray((data as IDataObject).elementos)
+	) {
+		const filteredItems = ((data as IDataObject).elementos as IDataObject[]).filter((item) =>
+			matchesPropertyAdvancedFilters(item, filters) &&
+			customRules.every((rule) => matchesCustomPropertyRule(item, rule)),
+		);
+
+		return {
+			...(data as IDataObject),
+			elementos: filteredItems,
+			totalElementos: filteredItems.length,
+		};
+	}
+
+	return data;
+}
+
 function replacePathParameters(path: string, pathParameters: IDataObject): string {
 	return path.replace(/\{([^}]+)\}/g, (_, key: string) => {
 		const value = pathParameters[key];
@@ -515,6 +839,8 @@ export function getRequestData(
 	pathParameters: IDataObject;
 	queryParameters: IDataObject;
 	body: IDataObject;
+	propertyAdvancedJsonRules: MobiliaCustomPropertyRule[];
+	propertyAdvancedFilters: Record<string, boolean | number | string>;
 	returnAll: boolean;
 	simplifyResponse: boolean;
 	splitIntoItems: boolean;
@@ -541,19 +867,21 @@ export function getRequestData(
 			'Body',
 		);
 
-		return {
-			method: context.getNodeParameter('customMethod', itemIndex) as MobiliaHttpMethod,
-			path: normalizeRelativePath(
-				context,
-				context.getNodeParameter('customPath', itemIndex) as string,
+			return {
+				method: context.getNodeParameter('customMethod', itemIndex) as MobiliaHttpMethod,
+				path: normalizeRelativePath(
+					context,
+					context.getNodeParameter('customPath', itemIndex) as string,
 			),
 			pathParameters,
-			queryParameters,
-			body,
-			returnAll,
-			simplifyResponse,
-			splitIntoItems,
-		};
+				queryParameters,
+				body,
+				propertyAdvancedJsonRules: [],
+				propertyAdvancedFilters: {},
+				returnAll,
+				simplifyResponse,
+				splitIntoItems,
+			};
 	}
 
 	if (!operation) {
@@ -575,6 +903,8 @@ export function getRequestData(
 			...collectQueryCollectionValues(context, itemIndex, operation),
 		},
 		body: collectTypedFieldValues(context, itemIndex, operation, 'body', operation.bodyFields),
+		propertyAdvancedJsonRules: collectAdvancedJsonRules(context, itemIndex, operation),
+		propertyAdvancedFilters: collectAdvancedFilters(context, itemIndex, operation),
 		returnAll,
 		simplifyResponse,
 		splitIntoItems,
@@ -588,9 +918,13 @@ export async function mobiliaApiRequest(
 ): Promise<unknown> {
 	const requestData = getRequestData(context, itemIndex, operation);
 	const path = replacePathParameters(requestData.path, requestData.pathParameters);
+	const shouldForceFullPagination =
+		isAdvancedFilterOperation(operation) &&
+		(hasAdvancedFilters(requestData.propertyAdvancedFilters) ||
+			requestData.propertyAdvancedJsonRules.length > 0);
 
 	try {
-		if (shouldPaginate(operation, requestData.returnAll)) {
+		if (shouldPaginate(operation, requestData.returnAll) || shouldForceFullPagination) {
 			const mergedElements: IDataObject[] = [];
 			let page = Number(requestData.queryParameters.NumeroPagina ?? 1);
 			const pageSize = Number(requestData.queryParameters.TamanoPagina ?? 100);
@@ -621,12 +955,18 @@ export async function mobiliaApiRequest(
 				page += 1;
 			}
 
-			return requestData.simplifyResponse
+			const paginatedData = requestData.simplifyResponse
 				? mergedElements
 				: {
 						elementos: mergedElements,
 						totalElementos: mergedElements.length,
 				  };
+
+			return applyAdvancedFilters(
+				paginatedData,
+				requestData.propertyAdvancedFilters,
+				requestData.propertyAdvancedJsonRules,
+			);
 		}
 
 		const response = await mobiliaAuthenticatedRequest(context, {
@@ -638,7 +978,11 @@ export async function mobiliaApiRequest(
 					? requestData.body
 					: undefined,
 		});
-		return simplifyResponseData(response, requestData.simplifyResponse);
+		return applyAdvancedFilters(
+			simplifyResponseData(response, requestData.simplifyResponse),
+			requestData.propertyAdvancedFilters,
+			requestData.propertyAdvancedJsonRules,
+		);
 	} catch (error) {
 		throw new NodeApiError(context.getNode(), error as JsonObject);
 	}
