@@ -429,8 +429,10 @@ const operationFieldUiMetadata: Record<string, Record<string, MobiliaFieldUiMeta
 	},
 	inmueblesGetAll: {
 		Busqueda: {
-			description: 'Busca por referencia o texto relacionado con el inmueble.',
-			placeholder: 'Referencia, calle o texto libre',
+			displayName: 'Referencia',
+			description:
+				'Texto para buscar en la referencia del inmueble. Mobilia aplica este filtro sobre la referencia, no sobre calle, zona o descripción.',
+			placeholder: 'REF-001',
 		},
 		IdCuentas: {
 			loadOptionsMethod: 'getAccounts',
@@ -450,8 +452,10 @@ const operationFieldUiMetadata: Record<string, Record<string, MobiliaFieldUiMeta
 	},
 	inmueblesGetDisabled: {
 		Busqueda: {
-			description: 'Busca por referencia o texto relacionado con el inmueble.',
-			placeholder: 'Referencia, calle o texto libre',
+			displayName: 'Referencia',
+			description:
+				'Texto para buscar en la referencia del inmueble. Mobilia aplica este filtro sobre la referencia, no sobre calle, zona o descripción.',
+			placeholder: 'REF-001',
 		},
 		IdCuentas: {
 			loadOptionsMethod: 'getAccounts',
@@ -468,8 +472,10 @@ const operationFieldUiMetadata: Record<string, Record<string, MobiliaFieldUiMeta
 	},
 	inmueblesGetMany: {
 		Busqueda: {
-			description: 'Busca por referencia o texto relacionado con el inmueble.',
-			placeholder: 'Referencia, calle o texto libre',
+			displayName: 'Referencia',
+			description:
+				'Texto para buscar en la referencia del inmueble. Mobilia aplica este filtro sobre la referencia, no sobre calle, zona o descripción.',
+			placeholder: 'REF-001',
 		},
 		IdCuentas: {
 			loadOptionsMethod: 'getAccounts',
@@ -1406,6 +1412,7 @@ export interface MobiliaQueryFieldGroup {
 
 const paginationFieldNames = new Set(['NumeroPagina', 'Ordenacion', 'OrdenarPor', 'TamanoPagina']);
 const presentationFieldNames = new Set(['DescripcionImagenes', 'MarcaAguaImagenes']);
+const standaloneQueryFieldNames = new Set(['Busqueda']);
 
 const operationOptionNameOverrides: Record<string, string> = {
 	agendaGetPendingVisits: 'Ver visitas pendientes por agente y fecha',
@@ -1623,6 +1630,10 @@ export function getQueryFieldGroups(operation: MobiliaOperation): MobiliaQueryFi
 	const groups = new Map<QueryCollectionKey, MobiliaFieldDefinition[]>();
 
 	for (const field of operation.queryFields) {
+		if (standaloneQueryFieldNames.has(field.name)) {
+			continue;
+		}
+
 		const key = getQueryCollectionKey(field.name);
 		const existing = groups.get(key) ?? [];
 		existing.push(field);
