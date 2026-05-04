@@ -16,6 +16,7 @@ export class MobiliaApi implements ICredentialType {
 			type: 'string',
 			default: 'https://api.mobiliagestion.es',
 			required: true,
+			description: 'URL base de la API de Mobilia.',
 		},
 		{
 			displayName: 'Client ID',
@@ -23,6 +24,7 @@ export class MobiliaApi implements ICredentialType {
 			type: 'string',
 			default: '',
 			required: true,
+			description: 'Client ID entregado por Mobilia.',
 		},
 		{
 			displayName: 'Client Secret',
@@ -33,6 +35,7 @@ export class MobiliaApi implements ICredentialType {
 			},
 			default: '',
 			required: true,
+			description: 'Client secret entregado por Mobilia.',
 		},
 	];
 

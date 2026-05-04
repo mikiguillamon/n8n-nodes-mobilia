@@ -12,6 +12,17 @@ export type MobiliaFieldKind =
 	| 'number'
 	| 'string';
 export type MobiliaFieldLocation = 'body' | 'path' | 'query';
+export type MobiliaLoadOptionsMethod =
+	| 'getAccounts'
+	| 'getAdministrativeStates'
+	| 'getAgents'
+	| 'getCampaigns'
+	| 'getClientGroups'
+	| 'getPropertyGroups'
+	| 'getTaskStates'
+	| 'getTaskTypes'
+	| 'getVisitStates'
+	| 'getVisitTypes';
 
 export interface MobiliaFieldDefinition {
 	name: string;
@@ -21,6 +32,14 @@ export interface MobiliaFieldDefinition {
 	required?: boolean;
 	options?: string[];
 	placeholder?: string;
+}
+
+interface MobiliaFieldUiMetadata {
+	description?: string;
+	displayName?: string;
+	loadOptionsMethod?: MobiliaLoadOptionsMethod;
+	placeholder?: string;
+	type?: 'multiOptions' | 'options' | 'string';
 }
 
 export interface MobiliaOperation {
@@ -190,11 +209,334 @@ const sortDirectionField = enumField(
 	'Dirección de ordenación',
 );
 
+const baseFieldUiMetadata: Record<string, MobiliaFieldUiMetadata> = {
+	Busqueda: {
+		displayName: 'Búsqueda',
+		description: 'Texto de búsqueda.',
+		placeholder: 'Escribe un texto para filtrar',
+	},
+	DescripcionImagenes: {
+		displayName: 'Añadir descripción a las imágenes',
+		description: 'Incluye la descripción de cada imagen en la respuesta.',
+	},
+	FechaDesde: {
+		displayName: 'Fecha desde',
+		description: 'Fecha mínima a partir de la que buscar.',
+	},
+	FechaHasta: {
+		displayName: 'Fecha hasta',
+		description: 'Fecha máxima hasta la que buscar.',
+	},
+	FechaUltimaModificacion: {
+		displayName: 'Modificados desde',
+		description: 'Trae solo registros modificados desde esta fecha.',
+	},
+	IdAgente: {
+		displayName: 'Agente',
+		description: 'Agente relacionado con la consulta.',
+		loadOptionsMethod: 'getAgents',
+		type: 'options',
+	},
+	IdCampana: {
+		displayName: 'Campaña',
+		description: 'Campaña relacionada.',
+		loadOptionsMethod: 'getCampaigns',
+		type: 'options',
+	},
+	IdCuenta: {
+		displayName: 'Cuenta',
+		description: 'Cuenta relacionada.',
+		loadOptionsMethod: 'getAccounts',
+		type: 'options',
+	},
+	IdCuentas: {
+		displayName: 'Cuentas',
+		description: 'Selecciona una o varias cuentas.',
+		loadOptionsMethod: 'getAccounts',
+		type: 'multiOptions',
+	},
+	IdEstadoTarea: {
+		displayName: 'Estado',
+		description: 'Estado de la tarea.',
+		loadOptionsMethod: 'getTaskStates',
+		type: 'options',
+	},
+	IdEstadoVisita: {
+		displayName: 'Estado',
+		description: 'Estado de la visita.',
+		loadOptionsMethod: 'getVisitStates',
+		type: 'options',
+	},
+	IdEstadosAdministrativos: {
+		displayName: 'Estados administrativos',
+		description: 'Filtra por uno o varios estados administrativos.',
+		loadOptionsMethod: 'getAdministrativeStates',
+		type: 'multiOptions',
+	},
+	IdExcluyeCuentas: {
+		displayName: 'Excluir cuentas',
+		description: 'Cuentas que deben quedar fuera del resultado.',
+		loadOptionsMethod: 'getAccounts',
+		type: 'multiOptions',
+	},
+	IdExcluyeGrupos: {
+		displayName: 'Excluir grupos',
+		description: 'Grupos que deben quedar fuera del resultado.',
+		type: 'multiOptions',
+	},
+	IdGrupos: {
+		displayName: 'Grupos',
+		description: 'Selecciona uno o varios grupos.',
+		type: 'multiOptions',
+	},
+	IdPropietario: {
+		displayName: 'Referencia del propietario',
+		description: 'Referencia interna del propietario en Mobilia.',
+		placeholder: '12345',
+	},
+	IdTipo: {
+		displayName: 'Tipo',
+		description: 'Tipo relacionado con la operación.',
+		type: 'options',
+	},
+	MarcaAguaImagenes: {
+		displayName: 'Aplicar marca de agua',
+		description: 'Devuelve las imágenes con marca de agua.',
+	},
+	NumeroPagina: {
+		displayName: 'Página',
+		description: 'Página a recuperar.',
+	},
+	Ordenacion: {
+		displayName: 'Dirección del orden',
+		description: 'Orden ascendente o descendente.',
+	},
+	OrdenarPor: {
+		displayName: 'Ordenar por',
+		description: 'Campo que se usará para ordenar.',
+	},
+	PrecioMaximo: {
+		displayName: 'Precio máximo',
+		description: 'Importe máximo.',
+	},
+	PrecioVentaDesde: {
+		displayName: 'Precio de venta mínimo',
+		description: 'Trae solo inmuebles desde este precio.',
+	},
+	TamanoPagina: {
+		displayName: 'Resultados por página',
+		description: 'Número de resultados por página. Máximo 100.',
+	},
+	TiposCliente: {
+		displayName: 'Tipos de cliente',
+		description: 'Selecciona los perfiles de cliente que quieres recuperar.',
+	},
+	TiposOperacion: {
+		displayName: 'Tipos de operación',
+		description: 'Selecciona las operaciones que quieres incluir.',
+	},
+	email: {
+		displayName: 'Email',
+		description: 'Correo electrónico.',
+		placeholder: 'cliente@ejemplo.com',
+	},
+	grupos: {
+		displayName: 'Grupos',
+		description: 'Grupos a vincular.',
+		type: 'multiOptions',
+	},
+	idAgente: {
+		displayName: 'Agente',
+		description: 'Agente relacionado con la operación.',
+		loadOptionsMethod: 'getAgents',
+		type: 'options',
+	},
+	idCampana: {
+		displayName: 'Campaña',
+		description: 'Campaña relacionada.',
+		loadOptionsMethod: 'getCampaigns',
+		type: 'options',
+	},
+	idTipo: {
+		displayName: 'Tipo',
+		description: 'Tipo relacionado con la operación.',
+		type: 'options',
+	},
+	idsAgentesSincronizar: {
+		displayName: 'Agentes a sincronizar',
+		description: 'Agentes con los que se sincronizará el contacto.',
+		loadOptionsMethod: 'getAgents',
+		type: 'multiOptions',
+	},
+	inmuebles: {
+		displayName: 'Referencias de inmuebles',
+		description: 'Una o varias referencias de inmuebles.',
+		placeholder: 'REF-001, REF-002',
+	},
+	referenciaCliente: {
+		displayName: 'Referencia del cliente',
+		description: 'Referencia interna del cliente en Mobilia.',
+	},
+	referenciaInmueble: {
+		displayName: 'Referencia del inmueble',
+		description: 'Referencia interna del inmueble en Mobilia.',
+		placeholder: 'REF-001',
+	},
+};
+
+const operationFieldUiMetadata: Record<string, Record<string, MobiliaFieldUiMetadata>> = {
+	agendaGetPendingVisits: {
+		idAgente: {
+			description: 'Agente del que quieres consultar la agenda.',
+		},
+	},
+	clientesCreate: {
+		cuentas: {
+			loadOptionsMethod: 'getAccounts',
+			type: 'multiOptions',
+		},
+		grupos: {
+			loadOptionsMethod: 'getClientGroups',
+			type: 'multiOptions',
+		},
+	},
+	clientesGetMany: {
+		Busqueda: {
+			description: 'Busca por nombre, email o texto relacionado con el cliente.',
+		},
+		IdCampana: {
+			loadOptionsMethod: 'getCampaigns',
+		},
+		IdCuenta: {
+			loadOptionsMethod: 'getAccounts',
+		},
+		IdExcluyeGrupos: {
+			loadOptionsMethod: 'getClientGroups',
+		},
+		IdGrupos: {
+			loadOptionsMethod: 'getClientGroups',
+		},
+	},
+	clientesUpdate: {
+		cuentas: {
+			loadOptionsMethod: 'getAccounts',
+			type: 'multiOptions',
+		},
+		grupos: {
+			loadOptionsMethod: 'getClientGroups',
+			type: 'multiOptions',
+		},
+	},
+	inmueblesGetAll: {
+		Busqueda: {
+			description: 'Busca por referencia o texto relacionado con el inmueble.',
+			placeholder: 'Referencia, calle o texto libre',
+		},
+		IdCuentas: {
+			loadOptionsMethod: 'getAccounts',
+		},
+		IdEstadosAdministrativos: {
+			loadOptionsMethod: 'getAdministrativeStates',
+		},
+		IdExcluyeCuentas: {
+			loadOptionsMethod: 'getAccounts',
+		},
+		IdExcluyeGrupos: {
+			loadOptionsMethod: 'getPropertyGroups',
+		},
+		IdGrupos: {
+			loadOptionsMethod: 'getPropertyGroups',
+		},
+	},
+	inmueblesGetDisabled: {
+		Busqueda: {
+			description: 'Busca por referencia o texto relacionado con el inmueble.',
+			placeholder: 'Referencia, calle o texto libre',
+		},
+		IdCuentas: {
+			loadOptionsMethod: 'getAccounts',
+		},
+		IdExcluyeCuentas: {
+			loadOptionsMethod: 'getAccounts',
+		},
+		IdExcluyeGrupos: {
+			loadOptionsMethod: 'getPropertyGroups',
+		},
+		IdGrupos: {
+			loadOptionsMethod: 'getPropertyGroups',
+		},
+	},
+	inmueblesGetMany: {
+		Busqueda: {
+			description: 'Busca por referencia o texto relacionado con el inmueble.',
+			placeholder: 'Referencia, calle o texto libre',
+		},
+		IdCuentas: {
+			loadOptionsMethod: 'getAccounts',
+		},
+		IdExcluyeCuentas: {
+			loadOptionsMethod: 'getAccounts',
+		},
+		IdExcluyeGrupos: {
+			loadOptionsMethod: 'getPropertyGroups',
+		},
+		IdGrupos: {
+			loadOptionsMethod: 'getPropertyGroups',
+		},
+	},
+	solicitudesCreate: {
+		idAgente: {
+			loadOptionsMethod: 'getAgents',
+		},
+		idCampana: {
+			loadOptionsMethod: 'getCampaigns',
+		},
+	},
+	solicitudesUpdate: {
+		idAgente: {
+			loadOptionsMethod: 'getAgents',
+		},
+		idCampana: {
+			loadOptionsMethod: 'getCampaigns',
+		},
+	},
+	tareasCreate: {
+		idTipo: {
+			loadOptionsMethod: 'getTaskTypes',
+		},
+	},
+	tareasGetMany: {
+		IdTipo: {
+			loadOptionsMethod: 'getTaskTypes',
+		},
+	},
+	tareasUpdate: {
+		idTipo: {
+			loadOptionsMethod: 'getTaskTypes',
+		},
+	},
+	visitasCreate: {
+		idTipo: {
+			loadOptionsMethod: 'getVisitTypes',
+		},
+	},
+	visitasGetMany: {
+		IdTipo: {
+			loadOptionsMethod: 'getVisitTypes',
+		},
+	},
+	visitasUpdate: {
+		idTipo: {
+			loadOptionsMethod: 'getVisitTypes',
+		},
+	},
+};
+
 export const mobiliaResources = [
 	{ name: 'Agenda', value: 'agenda' },
 	{ name: 'Agentes', value: 'agentes' },
 	{ name: 'Aplicaciones Cliente', value: 'aplicacionesCliente' },
-	{ name: 'Campanas', value: 'campanas' },
+	{ name: 'Campañas', value: 'campanas' },
 	{ name: 'Clientes', value: 'clientes' },
 	{ name: 'Cuentas', value: 'cuentas' },
 	{ name: 'Estados Administrativos', value: 'estadosAdministrativos' },
@@ -205,7 +547,7 @@ export const mobiliaResources = [
 	{ name: 'Status', value: 'status' },
 	{ name: 'Tareas', value: 'tareas' },
 	{ name: 'Visitas', value: 'visitas' },
-	{ name: 'Custom Request', value: 'customRequest' },
+	{ name: 'Petición Personalizada', value: 'customRequest' },
 ] as const;
 
 export const mobiliaOperations: MobiliaOperation[] = [
@@ -1053,7 +1395,84 @@ export function getFieldPropertyName(
 	return `${location}_${operationValue}_${fieldName}`;
 }
 
-function getFieldPropertyType(field: MobiliaFieldDefinition): INodeProperties['type'] {
+type QueryCollectionKey = 'filters' | 'pagination' | 'presentation';
+
+export interface MobiliaQueryFieldGroup {
+	displayName: string;
+	fields: MobiliaFieldDefinition[];
+	key: QueryCollectionKey;
+	placeholder: string;
+}
+
+const paginationFieldNames = new Set(['NumeroPagina', 'Ordenacion', 'OrdenarPor', 'TamanoPagina']);
+const presentationFieldNames = new Set(['DescripcionImagenes', 'MarcaAguaImagenes']);
+
+const operationOptionNameOverrides: Record<string, string> = {
+	agendaGetPendingVisits: 'Ver visitas pendientes por agente y fecha',
+	agentesGet: 'Ver agente por ID',
+	agentesGetByEmail: 'Ver agente por email',
+	agentesGetMany: 'Listar agentes',
+	aplicacionesClienteCurrent: 'Ver aplicación cliente actual',
+	campanasGetMany: 'Listar campañas',
+	clientesCreate: 'Crear cliente',
+	clientesDelete: 'Eliminar cliente',
+	clientesGet: 'Ver cliente por referencia',
+	clientesGetByEmail: 'Ver cliente por email',
+	clientesGetMany: 'Listar clientes',
+	clientesUpdate: 'Actualizar cliente',
+	cuentasGetMany: 'Listar cuentas',
+	estadosAdministrativosGetMany: 'Listar estados administrativos',
+	gruposGetClientes: 'Listar grupos de clientes',
+	gruposGetInmuebles: 'Listar grupos de inmuebles',
+	inmueblesDownloadDocument: 'Descargar documento de inmueble',
+	inmueblesGetAll: 'Listar todos los inmuebles',
+	inmueblesGetDisabled: 'Listar inmuebles desactivados',
+	inmueblesGetDocuments: 'Ver documentos de un inmueble',
+	inmueblesGetKeyRing: 'Ver llavero de un inmueble',
+	inmueblesGetMany: 'Listar inmuebles disponibles',
+	inmueblesGetOwners: 'Ver propietarios de un inmueble',
+	promocionesGetMany: 'Listar promociones',
+	solicitudesCreate: 'Crear solicitud',
+	solicitudesDelete: 'Eliminar solicitud',
+	solicitudesGet: 'Ver solicitud por referencia',
+	solicitudesGetMany: 'Listar solicitudes',
+	solicitudesUpdate: 'Actualizar solicitud',
+	statusGet: 'Ver estado de la API',
+	tareasCreate: 'Crear tarea',
+	tareasDelete: 'Eliminar tarea',
+	tareasGet: 'Ver tarea por ID',
+	tareasGetMany: 'Listar tareas',
+	tareasGetStates: 'Listar estados de tarea',
+	tareasGetTypes: 'Listar tipos de tarea',
+	tareasUpdate: 'Actualizar tarea',
+	visitasCreate: 'Crear visita',
+	visitasDelete: 'Eliminar visita',
+	visitasGet: 'Ver visita por ID',
+	visitasGetInterestTypes: 'Listar tipos de interés mostrado',
+	visitasGetMany: 'Listar visitas',
+	visitasGetStates: 'Listar estados de visita',
+	visitasGetTypes: 'Listar tipos de visita',
+	visitasUpdate: 'Actualizar visita',
+};
+
+function getFieldUiMetadata(
+	operation: MobiliaOperation,
+	field: MobiliaFieldDefinition,
+): MobiliaFieldUiMetadata {
+	return {
+		...baseFieldUiMetadata[field.name],
+		...operationFieldUiMetadata[operation.value]?.[field.name],
+	};
+}
+
+function getFieldPropertyType(
+	field: MobiliaFieldDefinition,
+	uiMetadata: MobiliaFieldUiMetadata,
+): INodeProperties['type'] {
+	if (uiMetadata.type) {
+		return uiMetadata.type;
+	}
+
 	if (field.kind === 'enum' || field.kind === 'boolean') {
 		return 'options';
 	}
@@ -1065,25 +1484,32 @@ function getFieldPropertyType(field: MobiliaFieldDefinition): INodeProperties['t
 	return 'string';
 }
 
-function getFieldPropertyOptions(field: MobiliaFieldDefinition): INodeProperties['options'] | undefined {
+function getFieldPropertyOptions(
+	field: MobiliaFieldDefinition,
+	uiMetadata: MobiliaFieldUiMetadata,
+): INodeProperties['options'] | undefined {
+	if (uiMetadata.loadOptionsMethod) {
+		return [];
+	}
+
 	if (field.kind === 'boolean') {
 		if (field.required) {
 			return [
-				{ name: 'True', value: 'true' },
-				{ name: 'False', value: 'false' },
+				{ name: 'Sí', value: 'true' },
+				{ name: 'No', value: 'false' },
 			];
 		}
 
-		return [
-			{ name: 'Not Set', value: '__unset' },
-			{ name: 'True', value: 'true' },
-			{ name: 'False', value: 'false' },
-		];
-	}
+			return [
+				{ name: 'No Definir', value: '__unset' },
+				{ name: 'Sí', value: 'true' },
+				{ name: 'No', value: 'false' },
+			];
+		}
 
 	if (field.kind === 'enum') {
 		const options = (field.options ?? []).map((value) => ({ name: value, value }));
-		return field.required ? options : [{ name: 'Not Set', value: '' }, ...options];
+		return field.required ? options : [{ name: 'No Definir', value: '' }, ...options];
 	}
 
 	if (field.kind === 'multiEnum') {
@@ -1093,7 +1519,16 @@ function getFieldPropertyOptions(field: MobiliaFieldDefinition): INodeProperties
 	return undefined;
 }
 
-function getFieldDefaultValue(field: MobiliaFieldDefinition): INodeProperties['default'] {
+function getFieldDefaultValue(
+	field: MobiliaFieldDefinition,
+	uiMetadata: MobiliaFieldUiMetadata,
+): INodeProperties['default'] {
+	const type = getFieldPropertyType(field, uiMetadata);
+
+	if (type === 'multiOptions') {
+		return [];
+	}
+
 	if (field.kind === 'boolean') {
 		return field.required ? 'false' : '__unset';
 	}
@@ -1109,20 +1544,180 @@ function getFieldDefaultValue(field: MobiliaFieldDefinition): INodeProperties['d
 	return '';
 }
 
+function getFieldPlaceholder(
+	field: MobiliaFieldDefinition,
+	uiMetadata: MobiliaFieldUiMetadata,
+): string | undefined {
+	return uiMetadata.placeholder ?? field.placeholder;
+}
+
+function getFieldDescription(
+	field: MobiliaFieldDefinition,
+	uiMetadata: MobiliaFieldUiMetadata,
+): string {
+	return uiMetadata.description ?? field.description;
+}
+
+function getFieldDisplayName(
+	field: MobiliaFieldDefinition,
+	uiMetadata: MobiliaFieldUiMetadata,
+): string {
+	return uiMetadata.displayName ?? field.displayName;
+}
+
+function getFieldTypeOptions(uiMetadata: MobiliaFieldUiMetadata): INodeProperties['typeOptions'] {
+	if (!uiMetadata.loadOptionsMethod) {
+		return undefined;
+	}
+
+	return {
+		loadOptionsMethod: uiMetadata.loadOptionsMethod,
+	};
+}
+
+function shouldUseQueryCollections(operation: MobiliaOperation): boolean {
+	return operation.method === 'GET' && operation.queryFields.length >= 4;
+}
+
+function getQueryCollectionKey(fieldName: string): QueryCollectionKey {
+	if (presentationFieldNames.has(fieldName)) {
+		return 'presentation';
+	}
+
+	if (paginationFieldNames.has(fieldName)) {
+		return 'pagination';
+	}
+
+	return 'filters';
+}
+
+function getQueryCollectionDisplayName(key: QueryCollectionKey): string {
+	if (key === 'presentation') {
+		return 'Opciones de imágenes';
+	}
+
+	if (key === 'pagination') {
+		return 'Orden y paginación';
+	}
+
+	return 'Filtros';
+}
+
+function getQueryCollectionPlaceholder(key: QueryCollectionKey): string {
+	if (key === 'presentation') {
+		return 'Añadir opción de imágenes';
+	}
+
+	if (key === 'pagination') {
+		return 'Añadir opción de orden o paginación';
+	}
+
+	return 'Añadir filtro';
+}
+
+export function getQueryFieldGroups(operation: MobiliaOperation): MobiliaQueryFieldGroup[] {
+	if (!shouldUseQueryCollections(operation)) {
+		return [];
+	}
+
+	const groups = new Map<QueryCollectionKey, MobiliaFieldDefinition[]>();
+
+	for (const field of operation.queryFields) {
+		const key = getQueryCollectionKey(field.name);
+		const existing = groups.get(key) ?? [];
+		existing.push(field);
+		groups.set(key, existing);
+	}
+
+	return (['filters', 'presentation', 'pagination'] as QueryCollectionKey[])
+		.map((key) => {
+			const fields = groups.get(key) ?? [];
+
+			if (fields.length === 0) {
+				return undefined;
+			}
+
+			return {
+				key,
+				displayName: getQueryCollectionDisplayName(key),
+				fields,
+				placeholder: getQueryCollectionPlaceholder(key),
+			};
+		})
+		.filter((group): group is MobiliaQueryFieldGroup => group !== undefined);
+}
+
+export function getQueryCollectionPropertyName(
+	operationValue: string,
+	groupKey: QueryCollectionKey,
+): string {
+	return `query_collection_${operationValue}_${groupKey}`;
+}
+
+export function getQueryCollectionFieldNames(operation: MobiliaOperation): Set<string> {
+	return new Set(getQueryFieldGroups(operation).flatMap((group) => group.fields.map((field) => field.name)));
+}
+
+function buildCollectionOption(
+	field: MobiliaFieldDefinition,
+	operation: MobiliaOperation,
+): INodeProperties {
+	const uiMetadata = getFieldUiMetadata(operation, field);
+
+	return {
+		displayName: getFieldDisplayName(field, uiMetadata),
+		name: field.name,
+		type: getFieldPropertyType(field, uiMetadata),
+		required: field.required ?? false,
+		default: getFieldDefaultValue(field, uiMetadata),
+		options: getFieldPropertyOptions(field, uiMetadata),
+		placeholder: getFieldPlaceholder(field, uiMetadata),
+		description: getFieldDescription(field, uiMetadata),
+		typeOptions: getFieldTypeOptions(uiMetadata),
+	};
+}
+
+function buildQueryCollectionProperty(
+	operation: MobiliaOperation,
+	group: MobiliaQueryFieldGroup,
+): INodeProperties {
+	return {
+		displayName: group.displayName,
+		name: getQueryCollectionPropertyName(operation.value, group.key),
+		type: 'collection',
+		default: {},
+		placeholder: group.placeholder,
+		displayOptions: {
+			show: {
+				resource: [operation.resource],
+				operation: [operation.value],
+			},
+		},
+		options: group.fields.map((field) => buildCollectionOption(field, operation)),
+	};
+}
+
+function getOperationOptionName(operation: MobiliaOperation): string {
+	return operationOptionNameOverrides[operation.value] ?? operation.summary;
+}
+
 function buildFieldProperty(
 	field: MobiliaFieldDefinition,
 	location: MobiliaFieldLocation,
 	operation: MobiliaOperation,
 ): INodeProperties {
+	const uiMetadata = getFieldUiMetadata(operation, field);
+
 	return {
-		displayName: field.displayName,
+		displayName: getFieldDisplayName(field, uiMetadata),
 		name: getFieldPropertyName(location, operation.value, field.name),
-		type: getFieldPropertyType(field),
+		type: getFieldPropertyType(field, uiMetadata),
 		required: field.required ?? false,
-		default: getFieldDefaultValue(field),
-		options: getFieldPropertyOptions(field),
-		placeholder: field.placeholder,
-		description: field.description,
+		default: getFieldDefaultValue(field, uiMetadata),
+		options: getFieldPropertyOptions(field, uiMetadata),
+		placeholder: getFieldPlaceholder(field, uiMetadata),
+		description: getFieldDescription(field, uiMetadata),
+		typeOptions: getFieldTypeOptions(uiMetadata),
 		displayOptions: {
 			show: {
 				resource: [operation.resource],
@@ -1142,10 +1737,9 @@ function buildOperationProperties(): INodeProperties[] {
 
 		const operations = mobiliaOperations.filter((operation) => operation.resource === resource.value);
 
-			// n8n's lint rule cannot infer the generated default for operation selectors.
-			// eslint-disable-next-line n8n-nodes-base/node-param-default-missing
-			properties.push({
-			displayName: 'Operation',
+		// eslint-disable-next-line n8n-nodes-base/node-param-default-missing
+		properties.push({
+			displayName: 'Operación',
 			name: 'operation',
 			type: 'options',
 			noDataExpression: true,
@@ -1155,7 +1749,7 @@ function buildOperationProperties(): INodeProperties[] {
 				},
 			},
 			options: operations.map((operation) => ({
-				name: operation.name,
+				name: getOperationOptionName(operation),
 				value: operation.value,
 				description: `${operation.method} ${operation.path} · ${operation.summary}`,
 			})),
@@ -1163,11 +1757,21 @@ function buildOperationProperties(): INodeProperties[] {
 		});
 
 		for (const operation of operations) {
+			const queryCollectionFieldNames = getQueryCollectionFieldNames(operation);
+
 			for (const field of operation.pathFields) {
 				properties.push(buildFieldProperty(field, 'path', operation));
 			}
 
+			for (const group of getQueryFieldGroups(operation)) {
+				properties.push(buildQueryCollectionProperty(operation, group));
+			}
+
 			for (const field of operation.queryFields) {
+				if (queryCollectionFieldNames.has(field.name)) {
+					continue;
+				}
+
 				properties.push(buildFieldProperty(field, 'query', operation));
 			}
 
@@ -1182,7 +1786,7 @@ function buildOperationProperties(): INodeProperties[] {
 
 export const mobiliaNodeProperties: INodeProperties[] = [
 	{
-		displayName: 'Resource',
+		displayName: 'Recurso',
 		name: 'resource',
 		type: 'options',
 		noDataExpression: true,
@@ -1194,7 +1798,7 @@ export const mobiliaNodeProperties: INodeProperties[] = [
 	},
 	...buildOperationProperties(),
 	{
-		displayName: 'Method',
+		displayName: 'Método',
 		name: 'customMethod',
 		type: 'options',
 		displayOptions: {
@@ -1211,7 +1815,7 @@ export const mobiliaNodeProperties: INodeProperties[] = [
 		default: 'GET',
 	},
 	{
-		displayName: 'Path',
+		displayName: 'Ruta',
 		name: 'customPath',
 		type: 'string',
 		displayOptions: {
@@ -1221,10 +1825,10 @@ export const mobiliaNodeProperties: INodeProperties[] = [
 		},
 		default: '/api/v1/status',
 		placeholder: '/api/v1/clientes/12345',
-			description: 'Ruta relativa de la API. Se admiten placeholders como /api/v1/clientes/{referencia}.',
+		description: 'Ruta relativa de la API. Puedes usar placeholders como /api/v1/clientes/{referencia}.',
 	},
 	{
-		displayName: 'Path Parameters JSON',
+		displayName: 'JSON De Parámetros De Ruta',
 		name: 'pathParametersJson',
 		type: 'json',
 		displayOptions: {
@@ -1233,10 +1837,10 @@ export const mobiliaNodeProperties: INodeProperties[] = [
 			},
 		},
 		default: '{}',
-			description: 'Objeto JSON con los parámetros de path. Ejemplo: {"referencia": 1234}.',
+		description: 'Objeto JSON con los parámetros de ruta. Ejemplo: {"referencia": 1234}.',
 	},
 	{
-		displayName: 'Query Parameters JSON',
+		displayName: 'JSON De Query Params',
 		name: 'queryParametersJson',
 		type: 'json',
 		displayOptions: {
@@ -1245,10 +1849,10 @@ export const mobiliaNodeProperties: INodeProperties[] = [
 			},
 		},
 		default: '{}',
-			description: 'Objeto JSON con los parámetros query. Se respetan arrays para filtros múltiples.',
+		description: 'Objeto JSON con los parámetros query. Los arrays se envían como filtros múltiples.',
 	},
 	{
-		displayName: 'Body JSON',
+		displayName: 'JSON Del Body',
 		name: 'bodyJson',
 		type: 'json',
 		displayOptions: {
@@ -1257,27 +1861,27 @@ export const mobiliaNodeProperties: INodeProperties[] = [
 			},
 		},
 		default: '{}',
-			description: 'Objeto JSON para POST o PUT',
+		description: 'Objeto JSON para peticiones POST o PUT',
 	},
 	{
-		displayName: 'Return All',
+		displayName: 'Traer Todo',
 		name: 'returnAll',
 		type: 'boolean',
 		default: false,
-			description: 'Whether to return all results or only up to a given limit',
+		description: 'Whether to return all results or only up to a given limit',
 	},
 	{
-		displayName: 'Split Into Items',
+		displayName: 'Separar En Items',
 		name: 'splitIntoItems',
 		type: 'boolean',
 		default: true,
-			description: 'Whether to return array responses as separate items',
+		description: 'Whether to split array responses into separate items',
 	},
 	{
-		displayName: 'Simplify Response',
+		displayName: 'Simplificar Respuesta',
 		name: 'simplifyResponse',
 		type: 'boolean',
 		default: true,
-			description: 'Whether to unwrap common response envelopes such as datos or elementos',
+		description: 'Whether to unwrap common response envelopes such as datos or elementos',
 	},
 ];

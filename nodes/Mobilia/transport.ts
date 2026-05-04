@@ -1,16 +1,35 @@
-import type { IDataObject, IExecuteFunctions, JsonObject } from 'n8n-workflow';
+import type {
+	IDataObject,
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
+	JsonObject,
+} from 'n8n-workflow';
 import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 import {
 	getFieldPropertyName,
+	getQueryCollectionFieldNames,
+	getQueryCollectionPropertyName,
+	getQueryFieldGroups,
 	type MobiliaFieldDefinition,
 	type MobiliaHttpMethod,
 	type MobiliaOperation,
 } from './operations';
 
-interface MobiliaCredentials {
+export interface MobiliaCredentials {
 	baseUrl: string;
 	clientId: string;
 	clientSecret: string;
+}
+
+type MobiliaRequestContext = IExecuteFunctions | ILoadOptionsFunctions;
+
+interface MobiliaAuthenticatedRequestOptions {
+	body?: IDataObject;
+	headers?: IDataObject;
+	json?: boolean;
+	method: MobiliaHttpMethod;
+	path: string;
+	qs?: IDataObject;
 }
 
 interface TokenCacheEntry {
@@ -82,21 +101,11 @@ function parseCsvInteger(value: string): number[] {
 	});
 }
 
-function getTypedFieldValue(
+function coerceTypedFieldValue(
 	context: IExecuteFunctions,
-	itemIndex: number,
-	operation: MobiliaOperation,
-	location: 'body' | 'path' | 'query',
 	field: MobiliaFieldDefinition,
+	value: boolean | string | string[] | number | undefined,
 ): unknown {
-	const propertyName = getFieldPropertyName(location, operation.value, field.name);
-	const value = context.getNodeParameter(propertyName, itemIndex) as
-		| boolean
-		| string
-		| string[]
-		| number
-		| undefined;
-
 	switch (field.kind) {
 		case 'boolean':
 			if (typeof value === 'boolean') {
@@ -110,6 +119,21 @@ function getTypedFieldValue(
 			return value === 'true';
 
 		case 'csvInteger':
+			if (Array.isArray(value)) {
+				return value.map((entry) => {
+					const parsed = Number(entry);
+
+					if (!Number.isFinite(parsed)) {
+						throw new NodeOperationError(
+							context.getNode(),
+							`Field "${field.displayName}" must contain valid numbers`,
+						);
+					}
+
+					return parsed;
+				});
+			}
+
 			if (typeof value !== 'string' || value.trim() === '') {
 				return undefined;
 			}
@@ -123,9 +147,13 @@ function getTypedFieldValue(
 						(error as Error).message
 					}`,
 				);
-			}
+				}
 
 		case 'csvString':
+			if (Array.isArray(value)) {
+				return value.filter((entry) => entry !== '');
+			}
+
 			if (typeof value !== 'string' || value.trim() === '') {
 				return undefined;
 			}
@@ -158,6 +186,10 @@ function getTypedFieldValue(
 
 		case 'integer':
 		case 'number': {
+			if (typeof value === 'number') {
+				return Number.isFinite(value) ? value : undefined;
+			}
+
 			if (typeof value !== 'string' || value.trim() === '') {
 				return undefined;
 			}
@@ -185,6 +217,24 @@ function getTypedFieldValue(
 	}
 }
 
+function getTypedFieldValue(
+	context: IExecuteFunctions,
+	itemIndex: number,
+	operation: MobiliaOperation,
+	location: 'body' | 'path' | 'query',
+	field: MobiliaFieldDefinition,
+): unknown {
+	const propertyName = getFieldPropertyName(location, operation.value, field.name);
+	const value = context.getNodeParameter(propertyName, itemIndex) as
+		| boolean
+		| number
+		| string
+		| string[]
+		| undefined;
+
+	return coerceTypedFieldValue(context, field, value);
+}
+
 function collectTypedFieldValues(
 	context: IExecuteFunctions,
 	itemIndex: number,
@@ -199,6 +249,38 @@ function collectTypedFieldValues(
 
 		if (value !== undefined) {
 			data[field.name] = value as never;
+		}
+	}
+
+	return data;
+}
+
+function collectQueryCollectionValues(
+	context: IExecuteFunctions,
+	itemIndex: number,
+	operation: MobiliaOperation,
+): IDataObject {
+	const data: IDataObject = {};
+
+	for (const group of getQueryFieldGroups(operation)) {
+		const collectionValues = context.getNodeParameter(
+			getQueryCollectionPropertyName(operation.value, group.key),
+			itemIndex,
+			{},
+		) as IDataObject;
+
+		for (const field of group.fields) {
+			const rawValue = collectionValues[field.name] as
+				| boolean
+				| number
+				| string
+				| string[]
+				| undefined;
+			const value = coerceTypedFieldValue(context, field, rawValue);
+
+			if (value !== undefined) {
+				data[field.name] = value as never;
+			}
 		}
 	}
 
@@ -238,7 +320,7 @@ function buildCacheKey(credentials: MobiliaCredentials): string {
 	return `${normalizeBaseUrl(credentials.baseUrl)}::${credentials.clientId}`;
 }
 
-function parseTokenResponse(context: IExecuteFunctions, response: unknown): IDataObject {
+function parseTokenResponse(context: MobiliaRequestContext, response: unknown): IDataObject {
 	if (typeof response === 'string') {
 		try {
 			const parsed = JSON.parse(response);
@@ -265,7 +347,7 @@ function parseTokenResponse(context: IExecuteFunctions, response: unknown): IDat
 }
 
 async function getAccessToken(
-	context: IExecuteFunctions,
+	context: MobiliaRequestContext,
 	credentials: MobiliaCredentials,
 	forceRefresh = false,
 ): Promise<string> {
@@ -371,6 +453,58 @@ function isUnauthorizedError(error: unknown): boolean {
 	);
 }
 
+export async function mobiliaAuthenticatedRequest(
+	context: MobiliaRequestContext,
+	requestOptions: MobiliaAuthenticatedRequestOptions,
+): Promise<unknown> {
+	const credentials = (await context.getCredentials('mobiliaApi')) as unknown as MobiliaCredentials;
+	const url = `${normalizeBaseUrl(credentials.baseUrl)}${requestOptions.path}`;
+
+	const executeRequest = async (forceTokenRefresh = false): Promise<unknown> => {
+		const token = await getAccessToken(context, credentials, forceTokenRefresh);
+		const options: {
+			arrayFormat: 'repeat';
+			body?: IDataObject;
+			headers: IDataObject;
+			json?: boolean;
+			method: MobiliaHttpMethod;
+			qs: IDataObject;
+			url: string;
+		} = {
+			method: requestOptions.method,
+			url,
+			qs: requestOptions.qs ?? {},
+			arrayFormat: 'repeat',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				Accept: 'application/json',
+				...(requestOptions.headers ?? {}),
+			},
+		};
+
+		if (requestOptions.body !== undefined) {
+			options.body = requestOptions.body;
+			options.json = requestOptions.json ?? true;
+
+			if (options.headers['Content-Type'] === undefined) {
+				options.headers['Content-Type'] = 'application/json';
+			}
+		}
+
+		return await context.helpers.httpRequest(options);
+	};
+
+	try {
+		return await executeRequest(false);
+	} catch (error) {
+		if (!isUnauthorizedError(error)) {
+			throw error;
+		}
+
+		return await executeRequest(true);
+	}
+}
+
 export function getRequestData(
 	context: IExecuteFunctions,
 	itemIndex: number,
@@ -430,13 +564,16 @@ export function getRequestData(
 		method: operation.method,
 		path: operation.path,
 		pathParameters: collectTypedFieldValues(context, itemIndex, operation, 'path', operation.pathFields),
-		queryParameters: collectTypedFieldValues(
-			context,
-			itemIndex,
-			operation,
-			'query',
-			operation.queryFields,
-		),
+		queryParameters: {
+			...collectTypedFieldValues(
+				context,
+				itemIndex,
+				operation,
+				'query',
+				operation.queryFields.filter((field) => !getQueryCollectionFieldNames(operation).has(field.name)),
+			),
+			...collectQueryCollectionValues(context, itemIndex, operation),
+		},
 		body: collectTypedFieldValues(context, itemIndex, operation, 'body', operation.bodyFields),
 		returnAll,
 		simplifyResponse,
@@ -449,57 +586,8 @@ export async function mobiliaApiRequest(
 	itemIndex: number,
 	operation: MobiliaOperation | undefined,
 ): Promise<unknown> {
-	const credentials = (await context.getCredentials('mobiliaApi')) as unknown as MobiliaCredentials;
 	const requestData = getRequestData(context, itemIndex, operation);
-	const url = `${normalizeBaseUrl(credentials.baseUrl)}${replacePathParameters(
-		requestData.path,
-		requestData.pathParameters,
-	)}`;
-
-	const executeRequest = async (
-		queryParameters: IDataObject,
-		forceTokenRefresh = false,
-	): Promise<unknown> => {
-		const token = await getAccessToken(context, credentials, forceTokenRefresh);
-		const requestOptions: {
-			body?: IDataObject;
-			headers: IDataObject;
-			method: MobiliaHttpMethod;
-			qs: IDataObject;
-			url: string;
-			arrayFormat: 'repeat';
-			json?: boolean;
-		} = {
-			method: requestData.method,
-			url,
-			qs: queryParameters,
-			arrayFormat: 'repeat',
-			headers: {
-				Authorization: `Bearer ${token}`,
-				Accept: 'application/json',
-			},
-		};
-
-		if (requestData.method === 'POST' || requestData.method === 'PUT') {
-			requestOptions.body = requestData.body;
-			requestOptions.headers['Content-Type'] = 'application/json';
-			requestOptions.json = true;
-		}
-
-		return await context.helpers.httpRequest(requestOptions);
-	};
-
-	const executeRequestWithAuthRetry = async (queryParameters: IDataObject): Promise<unknown> => {
-		try {
-			return await executeRequest(queryParameters);
-		} catch (error) {
-			if (!isUnauthorizedError(error)) {
-				throw error;
-			}
-
-			return await executeRequest(queryParameters, true);
-		}
-	};
+	const path = replacePathParameters(requestData.path, requestData.pathParameters);
 
 	try {
 		if (shouldPaginate(operation, requestData.returnAll)) {
@@ -509,10 +597,14 @@ export async function mobiliaApiRequest(
 			let totalElements = Number.POSITIVE_INFINITY;
 
 			while (mergedElements.length < totalElements) {
-				const response = (await executeRequestWithAuthRetry({
-					...requestData.queryParameters,
-					NumeroPagina: page,
-					TamanoPagina: pageSize,
+				const response = (await mobiliaAuthenticatedRequest(context, {
+					method: requestData.method,
+					path,
+					qs: {
+						...requestData.queryParameters,
+						NumeroPagina: page,
+						TamanoPagina: pageSize,
+					},
 				})) as IDataObject;
 
 				const elements = Array.isArray(response.elementos)
@@ -537,7 +629,15 @@ export async function mobiliaApiRequest(
 				  };
 		}
 
-		const response = await executeRequestWithAuthRetry(requestData.queryParameters);
+		const response = await mobiliaAuthenticatedRequest(context, {
+			method: requestData.method,
+			path,
+			qs: requestData.queryParameters,
+			body:
+				requestData.method === 'POST' || requestData.method === 'PUT'
+					? requestData.body
+					: undefined,
+		});
 		return simplifyResponseData(response, requestData.simplifyResponse);
 	} catch (error) {
 		throw new NodeApiError(context.getNode(), error as JsonObject);

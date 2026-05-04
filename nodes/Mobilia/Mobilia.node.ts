@@ -1,5 +1,12 @@
-import type { IDataObject, IExecuteFunctions, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
+import type {
+	IDataObject,
+	IExecuteFunctions,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+} from 'n8n-workflow';
 import { NodeConnectionTypes } from 'n8n-workflow';
+import { mobiliaLoadOptions } from './loadOptions';
 import { getOperationByValue, mobiliaNodeProperties } from './operations';
 import { mobiliaApiRequest, normalizeExecutionOutput } from './transport';
 
@@ -11,7 +18,7 @@ export class Mobilia implements INodeType {
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["resource"]}}',
-		description: 'Consume the Mobilia public API',
+		description: 'Trabaja con la API pública de Mobilia',
 		defaults: {
 			name: 'Mobilia',
 		},
@@ -25,6 +32,10 @@ export class Mobilia implements INodeType {
 			},
 		],
 		properties: mobiliaNodeProperties,
+	};
+
+	methods = {
+		loadOptions: mobiliaLoadOptions,
 	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
