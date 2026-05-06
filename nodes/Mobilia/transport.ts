@@ -449,7 +449,7 @@ function getDynamicFilterValues(
 			.filter((value) => value !== undefined && value !== null);
 	}
 
-	return [getNestedValue(item, filterDefinition.path)];
+	return getNestedValues(item, filterDefinition.path);
 }
 
 function collectAdvancedFilters(
@@ -548,14 +548,46 @@ function collectAdvancedJsonRules(
 	return rules;
 }
 
-function getNestedValue(data: IDataObject, path: string): unknown {
-	return path.split('.').reduce<unknown>((current, segment) => {
-		if (!current || typeof current !== 'object' || Array.isArray(current)) {
-			return undefined;
+function getNestedValues(data: unknown, path: string): unknown[] {
+	if (path.trim() === '') {
+		return data === undefined || data === null ? [] : [data];
+	}
+
+	const segments = path.split('.').filter((segment) => segment !== '');
+	let currentValues: unknown[] = [data];
+
+	for (const segment of segments) {
+		const nextValues: unknown[] = [];
+
+		for (const currentValue of currentValues) {
+			if (Array.isArray(currentValue)) {
+				if (segment === 'length') {
+					nextValues.push(currentValue.length);
+					continue;
+				}
+
+				for (const entry of currentValue) {
+					if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+						nextValues.push((entry as IDataObject)[segment]);
+					}
+				}
+
+				continue;
+			}
+
+			if (currentValue && typeof currentValue === 'object') {
+				nextValues.push((currentValue as IDataObject)[segment]);
+			}
 		}
 
-		return (current as IDataObject)[segment];
-	}, data);
+		currentValues = nextValues.flatMap((value) => (Array.isArray(value) ? value : [value]));
+	}
+
+	return currentValues.filter((value) => value !== undefined && value !== null);
+}
+
+function getNestedValue(data: IDataObject, path: string): unknown {
+	return getNestedValues(data, path)[0];
 }
 
 function matchesPropertyAdvancedFilters(
@@ -642,23 +674,27 @@ function matchesPropertyAdvancedFilters(
 }
 
 function matchesCustomPropertyRule(item: IDataObject, rule: MobiliaCustomPropertyRule): boolean {
-	const actualValue = getNestedValue(item, rule.path);
+	const actualValues = getNestedValues(item, rule.path);
 
-	if (actualValue === undefined || actualValue === null) {
+	if (actualValues.length === 0) {
 		return false;
 	}
 
 	if (typeof rule.value === 'string') {
-		const actualText = String(actualValue).toLocaleLowerCase('es');
 		const expectedText = rule.value.toLocaleLowerCase('es');
+		return actualValues.some((actualValue) => {
+			const actualText = String(actualValue).toLocaleLowerCase('es');
 
-		if (rule.operator === 'equals') {
-			return actualText === expectedText;
-		}
+			if (rule.operator === 'equals') {
+				return actualText === expectedText;
+			}
 
-		if (rule.operator === 'contains') {
-			return actualText.includes(expectedText);
-		}
+			if (rule.operator === 'contains') {
+				return actualText.includes(expectedText);
+			}
+
+			return false;
+		});
 	}
 
 	if (typeof rule.value === 'boolean') {
@@ -666,29 +702,36 @@ function matchesCustomPropertyRule(item: IDataObject, rule: MobiliaCustomPropert
 			return false;
 		}
 
-		return Boolean(actualValue) === rule.value;
+		return actualValues.some((actualValue) => Boolean(actualValue) === rule.value);
 	}
 
-	const actualNumber = Number(actualValue);
 	const expectedNumber = Number(rule.value);
 
-	if (!Number.isFinite(actualNumber) || !Number.isFinite(expectedNumber)) {
+	if (!Number.isFinite(expectedNumber)) {
 		return false;
 	}
 
-	if (rule.operator === 'min') {
-		return actualNumber >= expectedNumber;
-	}
+	return actualValues.some((actualValue) => {
+		const actualNumber = Number(actualValue);
 
-	if (rule.operator === 'max') {
-		return actualNumber <= expectedNumber;
-	}
+		if (!Number.isFinite(actualNumber)) {
+			return false;
+		}
 
-	if (rule.operator === 'equals') {
-		return actualNumber === expectedNumber;
-	}
+		if (rule.operator === 'min') {
+			return actualNumber >= expectedNumber;
+		}
 
-	return false;
+		if (rule.operator === 'max') {
+			return actualNumber <= expectedNumber;
+		}
+
+		if (rule.operator === 'equals') {
+			return actualNumber === expectedNumber;
+		}
+
+		return false;
+	});
 }
 
 function applyAdvancedFilters(
@@ -1206,7 +1249,9 @@ export async function mobiliaApiRequest(
 		if (shouldPaginate(operation, requestData.returnAll) || shouldForceFullPagination) {
 			const mergedElements: IDataObject[] = [];
 			let page = Number(requestData.queryParameters.NumeroPagina ?? 1);
-			const pageSize = Number(requestData.queryParameters.TamanoPagina ?? 100);
+			const pageSize = shouldForceFullPagination
+				? 100
+				: Number(requestData.queryParameters.TamanoPagina ?? 100);
 			let totalElements = Number.POSITIVE_INFINITY;
 
 			while (mergedElements.length < totalElements) {
